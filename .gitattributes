@@ -1,0 +1,6 @@
+# Keep repository text sources consistently LF without broad normalization.
+*.go text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+go.mod text eol=lf
+go.sum text eol=lf
