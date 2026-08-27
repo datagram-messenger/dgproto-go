@@ -5,6 +5,13 @@
 **Category:** Application-Layer Secure Transport Protocol
 **Normative profile:** Current MVP
 
+This specification version describes **DGProto v1** and is independent of the
+Go module release version (planned `v0.1.0`). While this document remains a
+draft, edits may change wire behavior; `1.0.0` and the `v1` protocol name do not
+yet promise compatibility between draft revisions. Wire compatibility should be
+claimed only after stabilization and cross-implementation interoperability
+validation.
+
 > **Scope.** Unless a section is explicitly labeled **Historical / Post-MVP**, normative terms such as MUST, SHOULD, and MAY describe the current MVP. The MVP uses TCP, a three-flight Noise XX handshake, and ChaCha20-Poly1305. QUIC, transport obfuscation, Noise IK, resumption tickets, and 0-RTT are not implemented, negotiated, required, or permitted by the MVP. They are retained only in §8 as protocol history.
 
 ---

@@ -23,7 +23,7 @@ coding standards, and test requirements for the
 
 ```bash
 git clone https://github.com/datagram-messenger/dgproto-go
-cd protocol
+cd dgproto-go
 go mod download
 ```
 
@@ -33,18 +33,28 @@ go mod download
 
 ## 2. Running Tests
 
+Run the same core checks as CI from the repository root:
+
 ```bash
-# full test suite (race detector on)
-go test -race ./...
+go test -count=1 ./...
+go test -race -count=1 ./...
+go vet ./...
+gofmt -l .
+go mod tidy
+git diff --exit-code -- go.mod go.sum
+```
 
-# verbose output for a specific file
+`gofmt -l .` must print nothing. The race check requires CGO and a supported C
+toolchain. CI also runs ordinary tests on Windows and `govulncheck ./...`.
+
+Focused checks remain useful while developing:
+
+```bash
 go test -race -v -run TestHandshake ./...
-
-# MVP constraint compliance tests
 go test -race -v -run TestMVP ./...
 ```
 
-All tests must pass with `-race` before a PR is merged.
+All CI checks must pass before a PR is merged.
 
 ### Test File Map
 

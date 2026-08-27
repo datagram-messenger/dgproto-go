@@ -6,6 +6,7 @@
 
 A strict Go implementation of the DGProto v1 wire protocol and secure session runtime.
 
+[![CI](https://github.com/datagram-messenger/dgproto-go/actions/workflows/ci.yml/badge.svg)](https://github.com/datagram-messenger/dgproto-go/actions/workflows/ci.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/datagram-messenger/dgproto-go.svg)](https://pkg.go.dev/github.com/datagram-messenger/dgproto-go)
 [![Go](https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go&logoColor=white)](https://go.dev/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
@@ -40,12 +41,17 @@ truth for wire behavior. The Go API is documented on
 > securely, authenticate peer static keys, and review the specification before
 > changing wire-visible behavior.
 
-## Project status
+## Project status and versioning
 
-DGProto v1 is under active development and currently implements the strict MVP
-profile. The repository has no published version tags yet; consumers should pin
-a reviewed commit rather than assume API or wire-format stability from the
-`main` branch.
+**DGProto v1 / specification 1.0.0** identifies the protocol and its draft wire
+specification. **Go module v0.1.0** identifies the planned library release;
+these version numbers are independent.
+
+The specification remains **Draft — Implementation Track**. Until the wire
+profile is declared stable and interoperability-tested, neither specification
+`1.0.0` nor the `v1` name guarantees wire compatibility between revisions.
+Likewise, Go module `v0.1.0` is pre-v1: consumers should expect source API
+changes and pin an exact reviewed tag or commit.
 
 The current implementation includes server-side connection acceptance and an
 explicit initiator handshake API. It is a protocol library, not a complete
@@ -136,8 +142,9 @@ Followed by: `Payload` · `AEAD Tag (16 bytes, data frames only)` · `Padding`.
 | `0x04` | Ping / Pong                       | both             |
 | `0x05` | SessionClose                      | both             |
 | `0x06` | Ack                               | both             |
-| `0x07` | Reserved (post-MVP)               | —                |
+| `0x07` | Reserved (post-MVP resumption ticket) | —              |
 | `0x08` | RekeyInit                         | sender direction |
+| `0x09` | Error                             | both             |
 
 ---
 
@@ -182,7 +189,11 @@ func main() {
         StaticKey: staticKey,
         Handler: func(_ context.Context, conn *dgproto.Connection, msg any) error {
             if data, ok := msg.(*dgproto.EncryptedData); ok {
-                return conn.Send(dgproto.EncryptedData{Payload: data.Payload})
+                return conn.Send(dgproto.EncryptedData{
+                    StreamID:       data.StreamID,
+                    AppMessageType: data.AppMessageType,
+                    Fields:         data.Fields,
+                })
             }
             return nil
         },
@@ -203,11 +214,16 @@ func main() {
 }
 ```
 
-Run it with:
+Run the sample from a separate module (the repository root is a library, not a
+`main` package). Save the program as `main.go` in an empty directory, then run:
 
 ```sh
+go mod init example.com/dgproto-sample
+go get github.com/datagram-messenger/dgproto-go@v0.1.0
 go run .
 ```
+
+Before `v0.1.0` is published, replace the version with a reviewed commit hash.
 
 The package intentionally exposes the client/initiator handshake as an explicit
 three-flight state machine. See the
@@ -291,6 +307,7 @@ this module so server and client implementations can share the same wire rules.
 | [`docs/protocol/dgproto-v1.md`](docs/protocol/dgproto-v1.md) | Normative wire specification |
 | [`docs/architecture/overview.md`](docs/architecture/overview.md) | Package layout and data-flow diagrams |
 | [`docs/guides/getting-started.md`](docs/guides/getting-started.md) | Integration guide |
+| [`SECURITY.md`](SECURITY.md) | Private vulnerability reporting policy |
 
 ## Related repositories
 

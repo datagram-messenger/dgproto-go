@@ -31,28 +31,52 @@ if err != nil {
 ## 2. Start a Server
 
 ```go
-srv, err := dgproto.NewServer(dgproto.ServerConfig{
-    StaticKey:   staticKey,
-    CipherSuite: dgproto.CipherChaCha20Poly1305,
-    Handler: func(ctx context.Context, conn *dgproto.Connection, msg any) error {
-        switch m := msg.(type) {
-        case *dgproto.EncryptedData:
-            // echo the payload back
-            return conn.Send(dgproto.EncryptedData{Payload: m.Payload})
-        }
-        return nil
-    },
-})
-if err != nil {
-    log.Fatal(err)
-}
+package main
 
-ln, err := net.Listen("tcp", ":4242")
-if err != nil {
-    log.Fatal(err)
+import (
+    "context"
+    "errors"
+    "log"
+    "net"
+
+    dgproto "github.com/datagram-messenger/dgproto-go"
+)
+
+func main() {
+    staticKey, err := dgproto.GenerateStaticKey()
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    srv, err := dgproto.NewServer(dgproto.ServerConfig{
+        StaticKey:   staticKey,
+        CipherSuite: dgproto.CipherChaCha20Poly1305,
+        Handler: func(_ context.Context, conn *dgproto.Connection, msg any) error {
+            if data, ok := msg.(*dgproto.EncryptedData); ok {
+                return conn.Send(dgproto.EncryptedData{
+                    StreamID:       data.StreamID,
+                    AppMessageType: data.AppMessageType,
+                    Fields:         data.Fields,
+                })
+            }
+            return nil
+        },
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    ln, err := net.Listen("tcp", "127.0.0.1:4242")
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer ln.Close()
+
+    log.Println("listening on 127.0.0.1:4242")
+    if err := srv.Serve(ln); err != nil && !errors.Is(err, dgproto.ErrServerClosed) {
+        log.Fatal(err)
+    }
 }
-log.Println("listening on :4242")
-srv.Serve(ln) // blocks until listener is closed
 ```
 
 ## 3. Connect a Client
@@ -68,13 +92,25 @@ machine. A client must:
 
 This explicit API keeps identity verification and connection lifecycle under
 the caller's control. See `server_test.go` for an end-to-end initiator example.
-After `Start`, send an application message with:
+After `Start`, construct an application TLV and send the envelope:
 
 ```go
-if err := client.Send(dgproto.EncryptedData{Payload: []byte("hello")}); err != nil {
+text, err := dgproto.NewTLV(1, []byte("hello"))
+if err != nil {
+    log.Fatal(err)
+}
+if err := client.Send(dgproto.EncryptedData{
+    StreamID:       1,
+    AppMessageType: 1,
+    Fields:         []dgproto.TLV{text},
+}); err != nil {
     log.Fatal(err)
 }
 ```
+
+`EncryptedData` contains `StreamID`, `AppMessageType`, and uniquely typed
+`Fields`; it has no raw `Payload` field. Define TLV type meanings in the
+application protocol shared by both peers.
 
 ## 4. Connection Configuration
 
