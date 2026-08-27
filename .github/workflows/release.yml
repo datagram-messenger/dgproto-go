@@ -5,35 +5,49 @@ on:
     tags:
       - 'v*.*.*'
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing stable SemVer tag to validate and optionally publish
+        required: true
+        default: v0.1.0
+        type: string
+      publish:
+        description: Publish the GitHub Release after validation
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
   validate:
     name: Validate release
     runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
     steps:
       - name: Validate stable SemVer tag
-        if: github.event_name == 'push'
         shell: bash
-        env:
-          TAG: ${{ github.ref_name }}
         run: |
           if [[ ! "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
             echo "Release tags must use stable SemVer: vMAJOR.MINOR.PATCH (for example, v0.1.0)."
             exit 1
           fi
 
-      - name: Checkout exact ref
+      - name: Checkout exact tag
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref }}
+          ref: refs/tags/${{ env.TAG }}
           persist-credentials: false
+
+      - name: Verify exact tag is available
+        shell: bash
+        run: git rev-parse --verify "refs/tags/$TAG^{commit}"
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -97,15 +111,33 @@ jobs:
 
   publish:
     name: Publish GitHub Release
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && inputs.publish)
     needs: validate
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
     steps:
-      - name: Create GitHub Release with generated notes
+      - name: Checkout exact tag
+        uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ env.TAG }}
+          persist-credentials: false
+
+      - name: Verify exact tag is available
+        shell: bash
+        run: git rev-parse --verify "refs/tags/$TAG^{commit}"
+
+      - name: Create GitHub Release with generated notes if absent
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
-        run: gh release create "$TAG" --verify-tag --generate-notes --title "$TAG"
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "GitHub Release $TAG already exists; nothing to do."
+          else
+            gh release create "$TAG" --verify-tag --generate-notes --title "$TAG"
+          fi
