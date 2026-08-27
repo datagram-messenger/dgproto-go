@@ -1,4 +1,4 @@
-package dgpv1
+package dgproto
 
 import (
 	"crypto/hmac"
@@ -12,13 +12,13 @@ import (
 
 var (
 	// ErrSessionClosed indicates an operation on a closed or nil session.
-	ErrSessionClosed = errors.New("dgpv1: session is closed")
+	ErrSessionClosed = errors.New("dgproto: session is closed")
 	// ErrWrongSession indicates that a frame carries a different session ID.
-	ErrWrongSession = errors.New("dgpv1: frame belongs to another session")
+	ErrWrongSession = errors.New("dgproto: frame belongs to another session")
 	// ErrSequenceExhausted indicates that no further send sequence can be allocated.
-	ErrSequenceExhausted = errors.New("dgpv1: send sequence exhausted")
+	ErrSequenceExhausted = errors.New("dgproto: send sequence exhausted")
 	// ErrMessageType indicates that a value or frame type is unavailable through the strict-MVP Session API.
-	ErrMessageType = errors.New("dgpv1: message does not match encrypted frame type")
+	ErrMessageType = errors.New("dgproto: message does not match encrypted frame type")
 )
 
 // HandshakeSecrets is the directional material needed to open a session.
@@ -69,7 +69,7 @@ type Session struct {
 // NewSession opens a session from role-oriented handshake secrets.
 func NewSession(suite CipherSuite, secrets HandshakeSecrets) (*Session, error) {
 	if suite != CipherChaCha20Poly1305 {
-		return nil, fmt.Errorf("%w: DGPv1 requires ChaCha20-Poly1305", ErrUnsupportedCipher)
+		return nil, fmt.Errorf("%w: DGProto v1 requires ChaCha20-Poly1305", ErrUnsupportedCipher)
 	}
 	if secrets.SessionID == ([16]byte{}) {
 		return nil, ErrInvalidSessionID
@@ -140,7 +140,7 @@ func (s *Session) Closed() bool {
 
 // ErrRekeyPending indicates that Send is blocked until the caller confirms
 // that the previously returned RekeyInit was transmitted.
-var ErrRekeyPending = errors.New("dgpv1: rekey frame has not been marked sent")
+var ErrRekeyPending = errors.New("dgproto: rekey frame has not been marked sent")
 
 type pendingSendRekey struct {
 	frame Frame

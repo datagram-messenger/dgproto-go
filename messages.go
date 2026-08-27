@@ -1,4 +1,4 @@
-package dgpv1
+package dgproto
 
 import (
 	"encoding/binary"
@@ -28,7 +28,7 @@ const (
 	// MaxResumptionTicketSize is the post-MVP ticket byte limit.
 	MaxResumptionTicketSize = MaxEncryptedPayloadSize - 8
 	// MaxReasonSize is the largest text value whose aligned TLV and message code
-	// fit in the DGPv1 maximum encrypted frame payload.
+	// fit in the DGProto v1 maximum encrypted frame payload.
 	MaxReasonSize = MaxEncryptedPayloadSize - 2 - TLVHeaderSize - 1
 
 	textTLVType = 1
@@ -36,44 +36,44 @@ const (
 
 var (
 	// ErrMessageTooShort indicates that a message lacks its required fixed prefix.
-	ErrMessageTooShort = errors.New("dgpv1: message payload too short")
+	ErrMessageTooShort = errors.New("dgproto: message payload too short")
 	// ErrMessageLength indicates that a message payload has an invalid encoded length.
-	ErrMessageLength = errors.New("dgpv1: invalid message payload length")
+	ErrMessageLength = errors.New("dgproto: invalid message payload length")
 	// ErrMessageReserved indicates that a reserved message field is nonzero.
-	ErrMessageReserved = errors.New("dgpv1: reserved message field must be zero")
+	ErrMessageReserved = errors.New("dgproto: reserved message field must be zero")
 	// ErrInvalidNoisePattern indicates an unregistered Noise pattern value.
-	ErrInvalidNoisePattern = errors.New("dgpv1: invalid Noise pattern")
+	ErrInvalidNoisePattern = errors.New("dgproto: invalid Noise pattern")
 	// ErrHandshakeAlignment indicates that a handshake payload is not 4-byte aligned.
-	ErrHandshakeAlignment = errors.New("dgpv1: handshake payload must be 4-byte aligned")
+	ErrHandshakeAlignment = errors.New("dgproto: handshake payload must be 4-byte aligned")
 	// ErrUnexpectedNoiseData indicates that a Noise XX initial wrapper carries extra payload.
-	ErrUnexpectedNoiseData = errors.New("dgpv1: Noise XX initial payload must be empty")
+	ErrUnexpectedNoiseData = errors.New("dgproto: Noise XX initial payload must be empty")
 	// ErrInvalidPingResponse indicates that the ping response byte is neither zero nor one.
-	ErrInvalidPingResponse = errors.New("dgpv1: invalid ping response flag")
+	ErrInvalidPingResponse = errors.New("dgproto: invalid ping response flag")
 	// ErrAckCount indicates that an acknowledgement contains fewer than one or more than MaxAckSequences entries.
-	ErrAckCount = errors.New("dgpv1: acknowledgement count must be between 1 and 255")
+	ErrAckCount = errors.New("dgproto: acknowledgement count must be between 1 and 255")
 	// ErrInvalidUTF8 indicates that a textual message field is not valid UTF-8.
-	ErrInvalidUTF8 = errors.New("dgpv1: text is not valid UTF-8")
+	ErrInvalidUTF8 = errors.New("dgproto: text is not valid UTF-8")
 	// ErrReasonTooLong indicates that a textual message field exceeds MaxReasonSize.
-	ErrReasonTooLong = errors.New("dgpv1: reason exceeds maximum length")
+	ErrReasonTooLong = errors.New("dgproto: reason exceeds maximum length")
 	// ErrUnknownMessageTLV indicates an unsupported TLV in a typed protocol message.
-	ErrUnknownMessageTLV = errors.New("dgpv1: unknown message TLV")
+	ErrUnknownMessageTLV = errors.New("dgproto: unknown message TLV")
 	// ErrDuplicateMessageTLV indicates repeated TLV types where a typed message requires uniqueness.
-	ErrDuplicateMessageTLV = errors.New("dgpv1: duplicate message TLV")
+	ErrDuplicateMessageTLV = errors.New("dgproto: duplicate message TLV")
 	// ErrInvalidCloseCode indicates a SessionClose code outside the MVP range zero through three.
-	ErrInvalidCloseCode = errors.New("dgpv1: invalid close code")
+	ErrInvalidCloseCode = errors.New("dgproto: invalid close code")
 	// ErrResumptionTicket indicates an invalid post-MVP resumption-ticket encoding.
-	ErrResumptionTicket = errors.New("dgpv1: invalid resumption ticket")
+	ErrResumptionTicket = errors.New("dgproto: invalid resumption ticket")
 )
 
 // NoisePattern identifies a Noise handshake pattern in the wire wrapper.
-// DGPv1 MVP permits only NoisePatternXX.
+// DGProto v1 MVP permits only NoisePatternXX.
 type NoisePattern uint8
 
 const (
-	// NoisePatternXX identifies the Noise XX pattern used by DGPv1 MVP.
+	// NoisePatternXX identifies the Noise XX pattern used by DGProto v1 MVP.
 	NoisePatternXX NoisePattern = 1
 	// NoisePatternIK is retained for source compatibility with historical code.
-	// DGPv1 MVP serializers and parsers reject it.
+	// DGProto v1 MVP serializers and parsers reject it.
 	NoisePatternIK NoisePattern = 2
 )
 
@@ -90,7 +90,7 @@ type HandshakeInit struct {
 // MarshalBinary encodes m as a handshake-init payload and returns owned storage.
 func (m HandshakeInit) MarshalBinary() ([]byte, error) {
 	if m.Pattern != NoisePatternXX {
-		return nil, fmt.Errorf("%w: DGPv1 MVP requires Noise XX, got 0x%02x", ErrInvalidNoisePattern, m.Pattern)
+		return nil, fmt.Errorf("%w: DGProto v1 MVP requires Noise XX, got 0x%02x", ErrInvalidNoisePattern, m.Pattern)
 	}
 	if len(m.NoisePayload) != 0 {
 		return nil, ErrUnexpectedNoiseData
@@ -122,7 +122,7 @@ func (m *HandshakeInit) UnmarshalBinary(data []byte) error {
 	}
 	pattern := NoisePattern(data[0])
 	if pattern != NoisePatternXX {
-		return fmt.Errorf("%w: DGPv1 MVP requires Noise XX, got 0x%02x", ErrInvalidNoisePattern, pattern)
+		return fmt.Errorf("%w: DGProto v1 MVP requires Noise XX, got 0x%02x", ErrInvalidNoisePattern, pattern)
 	}
 	if data[1] != 0 || data[2] != 0 || data[3] != 0 {
 		return ErrMessageReserved

@@ -1,4 +1,4 @@
-package dgpv1
+package dgproto
 
 import (
 	"encoding/binary"
@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	// TLVHeaderSize is the encoded size of a DGPv1 TLV header.
+	// TLVHeaderSize is the encoded size of a DGProto v1 TLV header.
 	TLVHeaderSize = 3
 	// MaxTLVValueSize is the largest value representable by the wire length.
 	MaxTLVValueSize = 1<<16 - 1
@@ -19,17 +19,17 @@ const (
 
 var (
 	// ErrTLVTooShort indicates that input cannot contain a complete TLV header.
-	ErrTLVTooShort = errors.New("dgpv1: TLV too short")
+	ErrTLVTooShort = errors.New("dgproto: TLV too short")
 	// ErrTLVTruncated indicates that a TLV value or its alignment padding is incomplete.
-	ErrTLVTruncated = errors.New("dgpv1: truncated TLV")
+	ErrTLVTruncated = errors.New("dgproto: truncated TLV")
 	// ErrTLVValueTooLarge indicates that a value exceeds the uint16 wire length.
-	ErrTLVValueTooLarge = errors.New("dgpv1: TLV value exceeds uint16 length")
+	ErrTLVValueTooLarge = errors.New("dgproto: TLV value exceeds uint16 length")
 	// ErrTLVDecodeLimit indicates that input exceeds the caller's positive decode limit.
-	ErrTLVDecodeLimit = errors.New("dgpv1: TLV input exceeds decode limit")
+	ErrTLVDecodeLimit = errors.New("dgproto: TLV input exceeds decode limit")
 	// ErrTLVSequenceLimit indicates that an encoded sequence exceeds MaxTLVSequenceSize.
-	ErrTLVSequenceLimit = errors.New("dgpv1: TLV sequence exceeds size limit")
+	ErrTLVSequenceLimit = errors.New("dgproto: TLV sequence exceeds size limit")
 	// ErrTLVElementLimit indicates that a sequence exceeds MaxTLVElements.
-	ErrTLVElementLimit = errors.New("dgpv1: TLV sequence exceeds element limit")
+	ErrTLVElementLimit = errors.New("dgproto: TLV sequence exceeds element limit")
 )
 
 // TLV is one application field. Value is owned by the TLV and does not alias

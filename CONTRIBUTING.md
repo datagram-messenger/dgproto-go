@@ -1,8 +1,8 @@
-# Contributing to DGPv1
+# Contributing to DGProto v1
 
 Thank you for your interest in contributing! This document covers the workflow,
 coding standards, and test requirements for the
-`github.com/datagram-messenger/protocol` package.
+`github.com/datagram-messenger/dgproto-go` package.
 
 ---
 
@@ -22,7 +22,7 @@ coding standards, and test requirements for the
 ## 1. Development Setup
 
 ```bash
-git clone https://github.com/datagram-messenger/protocol
+git clone https://github.com/datagram-messenger/dgproto-go
 cd protocol
 go mod download
 ```
@@ -105,7 +105,7 @@ JSON test vectors live in `testdata/vectors/`. Each file is a strict object:
 
 ```json
 {
-  "schema": "dgpv1-wire-v1",
+  "schema": "dgproto-wire-v1",
   "vectors": [
     {
       "name": "unique-name",
@@ -135,8 +135,8 @@ and one invalid vector covering the new behaviour.
 - **`go vet`** — must produce zero warnings.
 - **Exported symbols** — every exported type, function, and constant must have
   a godoc comment. Package-level docs live in `doc.go`.
-- **Error wrapping** — use `fmt.Errorf("dgpv1: ...: %w", err)` with a
-  `dgpv1:` prefix and a sentinel exported error where callers may need to
+- **Error wrapping** — use `fmt.Errorf("dgproto: ...: %w", err)` with a
+  `dgproto:` prefix and a sentinel exported error where callers may need to
   `errors.Is`/`errors.As`.
 - **No panics in library code** — except for programming errors (nil
   dependency injection). Document any `panic` call.

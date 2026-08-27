@@ -1,5 +1,5 @@
 {
-  "schema": "dgpv1-wire-v1",
+  "schema": "dgproto-wire-v1",
   "vectors": [
     {
       "name": "frame-ping-zero-tag",

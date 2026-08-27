@@ -1,4 +1,4 @@
-# Getting Started with DGPv1
+# Getting Started with DGProto v1
 
 This guide walks you through importing the package, setting up a server, and
 connecting a client — all in Go.
@@ -6,10 +6,10 @@ connecting a client — all in Go.
 ## Prerequisites
 
 - Go 1.25 or later
-- A module that imports `github.com/datagram-messenger/protocol`
+- A module that imports `github.com/datagram-messenger/dgproto-go`
 
 ```bash
-go get github.com/datagram-messenger/protocol
+go get github.com/datagram-messenger/dgproto-go
 ```
 
 ## 1. Generate Static Key Pairs
@@ -18,9 +18,9 @@ Both peers need a long-term X25519 static key. Generate one (or load an
 existing one from persistent storage):
 
 ```go
-import dgpv1 "github.com/datagram-messenger/protocol"
+import dgproto "github.com/datagram-messenger/dgproto-go"
 
-staticKey, err := dgpv1.GenerateStaticKey()
+staticKey, err := dgproto.GenerateStaticKey()
 if err != nil {
     log.Fatal(err)
 }
@@ -31,14 +31,14 @@ if err != nil {
 ## 2. Start a Server
 
 ```go
-srv, err := dgpv1.NewServer(dgpv1.ServerConfig{
+srv, err := dgproto.NewServer(dgproto.ServerConfig{
     StaticKey:   staticKey,
-    CipherSuite: dgpv1.CipherChaCha20Poly1305,
-    Handler: func(ctx context.Context, conn *dgpv1.Connection, msg any) error {
+    CipherSuite: dgproto.CipherChaCha20Poly1305,
+    Handler: func(ctx context.Context, conn *dgproto.Connection, msg any) error {
         switch m := msg.(type) {
-        case *dgpv1.EncryptedData:
+        case *dgproto.EncryptedData:
             // echo the payload back
-            return conn.Send(dgpv1.EncryptedData{Payload: m.Payload})
+            return conn.Send(dgproto.EncryptedData{Payload: m.Payload})
         }
         return nil
     },
@@ -71,7 +71,7 @@ the caller's control. See `server_test.go` for an end-to-end initiator example.
 After `Start`, send an application message with:
 
 ```go
-if err := client.Send(dgpv1.EncryptedData{Payload: []byte("hello")}); err != nil {
+if err := client.Send(dgproto.EncryptedData{Payload: []byte("hello")}); err != nil {
     log.Fatal(err)
 }
 ```
@@ -81,7 +81,7 @@ if err := client.Send(dgpv1.EncryptedData{Payload: []byte("hello")}); err != nil
 `ConnectionConfig` controls timeouts, keepalives, and queue depths:
 
 ```go
-dgpv1.ConnectionConfig{
+dgproto.ConnectionConfig{
     HandshakeTimeout:  5 * time.Second,
     ReadTimeout:       30 * time.Second,
     WriteTimeout:      10 * time.Second,
@@ -127,7 +127,7 @@ Multiple concurrent termination signals are ranked:
 
 ```go
 <-client.Done()
-if err := client.Err(); err != nil && !errors.Is(err, dgpv1.ErrConnectionClosed) {
+if err := client.Err(); err != nil && !errors.Is(err, dgproto.ErrConnectionClosed) {
     log.Printf("connection terminated: %v", err)
 }
 ```

@@ -1,9 +1,9 @@
-# DGPv1 — Architecture Overview
+# DGProto v1 — Architecture Overview
 
 ## Package Layout
 
 ```
-github.com/datagram-messenger/protocol
+github.com/datagram-messenger/dgproto-go
 ├── doc.go                  — package-level godoc
 ├── frame.go                — L1 wire header (40 bytes), Frame type
 ├── tlv.go                  — TLV envelope encode/decode
@@ -56,14 +56,14 @@ Rust client without byte-swapping overhead.
 
 ### Noise XX — No Custom Crypto
 The handshake uses the standard `Noise_XX_25519_ChaChaPoly_SHA256` pattern
-from the Noise Protocol Framework. DGPv1 does **not** invent its own key
+from the Noise Protocol Framework. DGProto v1 does **not** invent its own key
 exchange or authentication scheme. The `github.com/flynn/noise` library
 provides the Noise state machine.
 
 ### Session ID from Channel Binding
 After the third Noise flight both peers independently derive:
 ```
-SessionID = SHA-256("DGPv1 SessionID" || channel_binding)[0:16]
+SessionID = SHA-256("DGProto v1 SessionID" || channel_binding)[0:16]
 ```
 This ties the session identifier cryptographically to the completed handshake
 transcript, preventing session-fixation attacks.

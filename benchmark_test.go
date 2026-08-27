@@ -1,4 +1,4 @@
-package dgpv1
+package dgproto
 
 import (
 	"bytes"
@@ -25,7 +25,7 @@ type messengerMessage struct {
 
 // BenchmarkMessengerWireFormats compares secure in-memory envelopes around
 // identical pre-serialized JSON. The HTTP case is synthetic, not ordinary HTTP
-// or TLS: it adds the same ChaCha20-Poly1305 work used by DGPv1.
+// or TLS: it adds the same ChaCha20-Poly1305 work used by DGProto v1.
 func BenchmarkMessengerWireFormats(b *testing.B) {
 	for _, textSize := range []int{64, 1024, 16384} {
 		payload, err := json.Marshal(messengerMessage{
@@ -36,13 +36,13 @@ func BenchmarkMessengerWireFormats(b *testing.B) {
 			b.Fatal(err)
 		}
 		b.Run(fmt.Sprintf("%dB-text", textSize), func(b *testing.B) {
-			benchmarkDGPv1Secure(b, payload)
+			benchmarkDGProto v1Secure(b, payload)
 			benchmarkHTTP1SyntheticSecure(b, payload)
 		})
 	}
 }
 
-func benchmarkDGPv1Secure(b *testing.B, payload []byte) {
+func benchmarkDGProto v1Secure(b *testing.B, payload []byte) {
 	codec, err := NewCodec(CipherChaCha20Poly1305, make([]byte, KeySize))
 	if err != nil {
 		b.Fatal(err)
@@ -58,7 +58,7 @@ func benchmarkDGPv1Secure(b *testing.B, payload []byte) {
 	}
 	assertDGPDecode(b, codec, wire, payload)
 
-	b.Run("DGPv1-secure-envelope/encode", func(b *testing.B) {
+	b.Run("DGProto v1-secure-envelope/encode", func(b *testing.B) {
 		b.ReportAllocs()
 		b.SetBytes(int64(len(payload)))
 		for i := 0; i < b.N; i++ {
@@ -73,7 +73,7 @@ func benchmarkDGPv1Secure(b *testing.B, payload []byte) {
 		}
 		reportWireMetrics(b, len(wire), len(payload))
 	})
-	b.Run("DGPv1-secure-envelope/decode", func(b *testing.B) {
+	b.Run("DGProto v1-secure-envelope/decode", func(b *testing.B) {
 		b.ReportAllocs()
 		b.SetBytes(int64(len(payload)))
 		for i := 0; i < b.N; i++ {
@@ -181,7 +181,7 @@ func assertDGPDecode(b *testing.B, codec *Codec, wire, want []byte) {
 	}
 	got, err := codec.Decrypt(frame)
 	if err != nil || !bytes.Equal(got, want) {
-		b.Fatalf("DGPv1 correctness check failed: %v", err)
+		b.Fatalf("DGProto v1 correctness check failed: %v", err)
 	}
 }
 
@@ -210,7 +210,7 @@ func BenchmarkSyntheticWireCodecs(b *testing.B) {
 		for i := range payload {
 			payload[i] = byte(i)
 		}
-		b.Run(fmt.Sprintf("DGPv1FrameAEAD/%dB/encode", size), func(b *testing.B) {
+		b.Run(fmt.Sprintf("DGProto v1FrameAEAD/%dB/encode", size), func(b *testing.B) {
 			codec, _ := NewCodec(CipherChaCha20Poly1305, make([]byte, KeySize))
 			b.ReportAllocs()
 			b.SetBytes(int64(size))
@@ -225,7 +225,7 @@ func BenchmarkSyntheticWireCodecs(b *testing.B) {
 				}
 			}
 		})
-		b.Run(fmt.Sprintf("DGPv1FrameAEAD/%dB/decode", size), func(b *testing.B) {
+		b.Run(fmt.Sprintf("DGProto v1FrameAEAD/%dB/decode", size), func(b *testing.B) {
 			codec, _ := NewCodec(CipherChaCha20Poly1305, make([]byte, KeySize))
 			frame, _ := codec.Encrypt(MessageTypeEncryptedData, [16]byte{1}, 1, payload, 0)
 			wire, _ := frame.MarshalBinary()

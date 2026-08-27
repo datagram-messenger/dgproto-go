@@ -1,4 +1,4 @@
-package dgpv1
+package dgproto
 
 import (
 	"encoding/binary"
@@ -7,13 +7,13 @@ import (
 )
 
 const (
-	// HeaderSize is the encoded size of a DGPv1 fixed header.
+	// HeaderSize is the encoded size of a DGProto v1 fixed header.
 	HeaderSize = 40
-	// Version is the protocol version encoded in every DGPv1 header.
+	// Version is the protocol version encoded in every DGProto v1 header.
 	Version uint8 = 1
-	// AEADTagSize is the authentication tag size used by DGPv1 ciphers.
+	// AEADTagSize is the authentication tag size used by DGProto v1 ciphers.
 	AEADTagSize = 16
-	// MaxFrameSize is the largest DGPv1 frame permitted by TCP framing.
+	// MaxFrameSize is the largest DGProto v1 frame permitted by TCP framing.
 	MaxFrameSize = 65535
 )
 
@@ -22,20 +22,20 @@ var (
 	Magic = [4]byte{'D', 'G', 'P', '1'}
 
 	// ErrHeaderTooShort indicates that input is shorter than HeaderSize.
-	ErrHeaderTooShort = errors.New("dgpv1: header too short")
+	ErrHeaderTooShort = errors.New("dgproto: header too short")
 	// ErrInvalidMagic indicates that a header does not begin with Magic.
-	ErrInvalidMagic = errors.New("dgpv1: invalid magic")
+	ErrInvalidMagic = errors.New("dgproto: invalid magic")
 	// ErrUnsupportedVersion indicates that a header version is not 0x01.
-	ErrUnsupportedVersion = errors.New("dgpv1: unsupported version")
+	ErrUnsupportedVersion = errors.New("dgproto: unsupported version")
 	// ErrReservedFlags indicates that an outbound header uses flags other than padding.
-	ErrReservedFlags = errors.New("dgpv1: reserved flag bits set")
+	ErrReservedFlags = errors.New("dgproto: reserved flag bits set")
 	// ErrPaddingFlag indicates that FlagPadding and PadLength disagree.
-	ErrPaddingFlag = errors.New("dgpv1: padding flag does not match pad length")
+	ErrPaddingFlag = errors.New("dgproto: padding flag does not match pad length")
 	// ErrFrameTooLarge indicates that header lengths describe a frame exceeding MaxFrameSize.
-	ErrFrameTooLarge = errors.New("dgpv1: frame exceeds maximum size")
+	ErrFrameTooLarge = errors.New("dgproto: frame exceeds maximum size")
 )
 
-// Flags controls optional DGPv1 frame behavior.
+// Flags controls optional DGProto v1 frame behavior.
 type Flags uint8
 
 const (
@@ -65,7 +65,7 @@ const (
 	MessageTypeError            MessageType = 0x09
 )
 
-// Header is the 40-byte fixed DGPv1 frame header. Reserved preserves the
+// Header is the 40-byte fixed DGProto v1 frame header. Reserved preserves the
 // received wire octets at offsets 7 and 37..39 so AEAD authenticates the exact
 // header. Senders must leave Reserved zero.
 type Header struct {
@@ -101,7 +101,7 @@ func (h Header) hasAEADTag() bool {
 	return h.MessageType != MessageTypeHandshakeInit && h.MessageType != MessageTypeHandshakeResponse
 }
 
-// FrameSize returns the complete wire-frame size. DGPv1 has no transport
+// FrameSize returns the complete wire-frame size. DGProto v1 has no transport
 // prefix. Handshake frames carry Noise messages directly and have no outer
 // 16-byte AEAD tag.
 func (h Header) FrameSize() uint64 {
@@ -168,10 +168,10 @@ func (h Header) marshalBinary(validateSend bool) ([]byte, error) {
 	return buf, nil
 }
 
-// MarshalBinary encodes h in the DGPv1 little-endian wire format.
+// MarshalBinary encodes h in the DGProto v1 little-endian wire format.
 func (h Header) MarshalBinary() ([]byte, error) { return h.marshalBinary(true) }
 
-// UnmarshalBinary decodes a plaintext DGPv1 fixed header. Reserved bytes and
+// UnmarshalBinary decodes a plaintext DGProto v1 fixed header. Reserved bytes and
 // unknown reserved flag bits are accepted as required for forward compatibility.
 func (h *Header) UnmarshalBinary(data []byte) error {
 	if len(data) < HeaderSize {

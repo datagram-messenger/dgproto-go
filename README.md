@@ -1,10 +1,10 @@
-# dgpv1
+# dgproto
 
-> Go implementation of **Datagram Protocol v1 (DGPv1)** — a binary,
+> Go implementation of **DGProto v1 (DGProto v1)** — a binary,
 > session-oriented, cryptographically secured application protocol for
 > low-latency bidirectional communication between native clients and Go backends.
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/datagram-messenger/protocol.svg)](https://pkg.go.dev/github.com/datagram-messenger/protocol)
+[![Go Reference](https://pkg.go.dev/badge/github.com/datagram-messenger/dgproto-go.svg)](https://pkg.go.dev/github.com/datagram-messenger/dgproto-go)
 
 ---
 
@@ -25,7 +25,7 @@
 
 ## Overview
 
-DGPv1 is a self-contained Go package that provides everything needed to
+DGProto v1 is a self-contained Go package that provides everything needed to
 establish mutually-authenticated, encrypted, session-oriented connections over
 TCP. It is designed for use in the Datagram Messenger system, where
 Rust/Tauri desktop clients communicate with Go microservice backends.
@@ -38,7 +38,7 @@ there is no separate length prefix.
 
 ## Architecture
 
-DGPv1 separates concerns into four layers stacked over TCP:
+DGProto v1 separates concerns into four layers stacked over TCP:
 
 ```
 ┌──────────────────────────────────────────┐
@@ -70,7 +70,7 @@ full package layout and data-flow diagrams.
 - **Noise XX mutual authentication** — `Noise_XX_25519_ChaChaPoly_SHA256`,
   1.5-RTT; both peers authenticate with long-term X25519 static keys.
 - **Session IDs from channel binding** —
-  `SHA-256("DGPv1 SessionID" || noise_channel_binding)[0:16]`, derived
+  `SHA-256("DGProto v1 SessionID" || noise_channel_binding)[0:16]`, derived
   independently by both peers after the third Noise flight.
 - **Replay protection** — per-direction 64-bit sliding window
   (IPsec/WireGuard model), epoch-aware.
@@ -128,22 +128,22 @@ Followed by: `Payload` · `AEAD Tag (16 bytes, data frames only)` · `Padding`.
 
 ```go
 import (
-    dgpv1 "github.com/datagram-messenger/protocol"
+    dgproto "github.com/datagram-messenger/dgproto-go"
 )
 
 // Generate or load a long-term static key pair
-staticKey, err := dgpv1.GenerateStaticKey()
+staticKey, err := dgproto.GenerateStaticKey()
 if err != nil {
     log.Fatal(err)
 }
 
 // Server — accept TCP connections and perform Noise XX
-srv, err := dgpv1.NewServer(dgpv1.ServerConfig{
+srv, err := dgproto.NewServer(dgproto.ServerConfig{
     StaticKey:   staticKey,
-    CipherSuite: dgpv1.CipherChaCha20Poly1305,
-    Handler: func(ctx context.Context, conn *dgpv1.Connection, msg any) error {
-        if m, ok := msg.(*dgpv1.EncryptedData); ok {
-            return conn.Send(dgpv1.EncryptedData{Payload: m.Payload}) // echo
+    CipherSuite: dgproto.CipherChaCha20Poly1305,
+    Handler: func(ctx context.Context, conn *dgproto.Connection, msg any) error {
+        if m, ok := msg.(*dgproto.EncryptedData); ok {
+            return conn.Send(dgproto.EncryptedData{Payload: m.Payload}) // echo
         }
         return nil
     },

@@ -1,4 +1,4 @@
-package dgpv1
+package dgproto
 
 import (
 	"context"
@@ -12,17 +12,17 @@ import (
 
 var (
 	// ErrConnectionClosed indicates that the connection runtime has terminated.
-	ErrConnectionClosed = errors.New("dgpv1: connection closed")
+	ErrConnectionClosed = errors.New("dgproto: connection closed")
 	// ErrIdleTimeout indicates that inbound activity did not occur before the idle timeout.
-	ErrIdleTimeout = errors.New("dgpv1: connection idle timeout")
+	ErrIdleTimeout = errors.New("dgproto: connection idle timeout")
 	// ErrKeepaliveTimeout indicates that an outstanding ping was not acknowledged in time.
-	ErrKeepaliveTimeout = errors.New("dgpv1: keepalive timeout")
+	ErrKeepaliveTimeout = errors.New("dgproto: keepalive timeout")
 	// ErrOutboundQueueFull indicates that a nonblocking send found the outbound queue full.
-	ErrOutboundQueueFull = errors.New("dgpv1: outbound queue full")
+	ErrOutboundQueueFull = errors.New("dgproto: outbound queue full")
 	// ErrHandlerQueueFull indicates that pending handler work exceeded its bound.
-	ErrHandlerQueueFull = errors.New("dgpv1: handler queue full")
+	ErrHandlerQueueFull = errors.New("dgproto: handler queue full")
 	// ErrHandlerPanic wraps a panic recovered from a MessageHandler.
-	ErrHandlerPanic = errors.New("dgpv1: handler panic")
+	ErrHandlerPanic = errors.New("dgproto: handler panic")
 )
 
 // MessageHandler handles one authenticated inbound message. The runtime calls
@@ -86,7 +86,7 @@ type Connection struct {
 // NewConnection constructs a stopped established-session runtime.
 func NewConnection(transport *TCPTransport, session *Session, config ConnectionConfig) *Connection {
 	if transport == nil || session == nil {
-		panic("dgpv1: nil connection dependency")
+		panic("dgproto: nil connection dependency")
 	}
 	if config.OutboundQueue <= 0 {
 		config.OutboundQueue = 16

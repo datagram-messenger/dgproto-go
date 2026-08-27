@@ -1,4 +1,4 @@
-package dgpv1
+package dgproto
 
 import (
 	"errors"
@@ -7,18 +7,18 @@ import (
 
 var (
 	// ErrFrameTooShort indicates that input cannot contain a complete fixed header.
-	ErrFrameTooShort = errors.New("dgpv1: frame too short")
+	ErrFrameTooShort = errors.New("dgproto: frame too short")
 	// ErrFrameLengthMismatch indicates that body lengths differ from the header declarations.
-	ErrFrameLengthMismatch = errors.New("dgpv1: frame length does not match header")
+	ErrFrameLengthMismatch = errors.New("dgproto: frame length does not match header")
 	// ErrPayloadTooLarge indicates that a payload would exceed MaxFrameSize.
-	ErrPayloadTooLarge = errors.New("dgpv1: payload exceeds maximum frame size")
+	ErrPayloadTooLarge = errors.New("dgproto: payload exceeds maximum frame size")
 	// ErrTagLength indicates that an outer AEAD tag has an invalid length.
-	ErrTagLength = errors.New("dgpv1: AEAD tag must be 16 bytes")
+	ErrTagLength = errors.New("dgproto: AEAD tag must be 16 bytes")
 	// ErrPaddingLength indicates that padding exceeds the uint8 wire limit.
-	ErrPaddingLength = errors.New("dgpv1: padding length exceeds 255 bytes")
+	ErrPaddingLength = errors.New("dgproto: padding length exceeds 255 bytes")
 )
 
-// Frame is a complete plaintext-header DGPv1 frame. Payload contains the
+// Frame is a complete plaintext-header DGProto v1 frame. Payload contains the
 // ciphertext only; Tag and Padding are represented separately.
 type Frame struct {
 	Header  Header
@@ -95,7 +95,7 @@ func (f Frame) ValidateReceive() error {
 	return f.validateLengths()
 }
 
-// MarshalBinary encodes f in canonical DGPv1 wire order: 40-byte header,
+// MarshalBinary encodes f in canonical DGProto v1 wire order: 40-byte header,
 // payload, optional 16-byte AEAD tag, then padding. Returned storage is owned.
 func (f Frame) MarshalBinary() ([]byte, error) {
 	if err := f.Validate(); err != nil {
@@ -116,7 +116,7 @@ func (f Frame) MarshalBinary() ([]byte, error) {
 	return buf, nil
 }
 
-// UnmarshalBinary decodes exactly one plaintext-header DGPv1 frame and copies
+// UnmarshalBinary decodes exactly one plaintext-header DGProto v1 frame and copies
 // its body so the result does not alias data.
 func (f *Frame) UnmarshalBinary(data []byte) error {
 	if len(data) < HeaderSize {

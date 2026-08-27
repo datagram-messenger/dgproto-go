@@ -1,4 +1,4 @@
-package dgpv1
+package dgproto
 
 import (
 	"crypto/cipher"
@@ -11,25 +11,25 @@ import (
 	"golang.org/x/crypto/chacha20poly1305"
 )
 
-// KeySize is the required DGPv1 traffic-key length in bytes.
+// KeySize is the required DGProto v1 traffic-key length in bytes.
 const KeySize = 32
 
 var (
 	// ErrInvalidKeySize indicates that a traffic key is not KeySize bytes.
-	ErrInvalidKeySize = errors.New("dgpv1: invalid key size")
+	ErrInvalidKeySize = errors.New("dgproto: invalid key size")
 	// ErrUnsupportedCipher indicates that a cipher suite is not implemented.
-	ErrUnsupportedCipher = errors.New("dgpv1: unsupported cipher suite")
+	ErrUnsupportedCipher = errors.New("dgproto: unsupported cipher suite")
 	// ErrUnencryptedType indicates that a frame type is outside the encrypted-message range.
-	ErrUnencryptedType = errors.New("dgpv1: message type is not encrypted data")
+	ErrUnencryptedType = errors.New("dgproto: message type is not encrypted data")
 	// ErrInvalidSequence indicates that an encrypted frame uses sequence zero.
-	ErrInvalidSequence = errors.New("dgpv1: encrypted frame sequence must be nonzero")
+	ErrInvalidSequence = errors.New("dgproto: encrypted frame sequence must be nonzero")
 	// ErrInvalidSessionID indicates that an encrypted frame uses the all-zero session ID.
-	ErrInvalidSessionID = errors.New("dgpv1: encrypted frame session ID must be nonzero")
+	ErrInvalidSessionID = errors.New("dgproto: encrypted frame session ID must be nonzero")
 	// ErrAuthentication indicates that authenticated decryption failed.
-	ErrAuthentication = errors.New("dgpv1: authentication failed")
+	ErrAuthentication = errors.New("dgproto: authentication failed")
 )
 
-// CipherSuite identifies a DGPv1 data-frame AEAD.
+// CipherSuite identifies a DGProto v1 data-frame AEAD.
 type CipherSuite uint8
 
 const (
@@ -39,14 +39,14 @@ const (
 	CipherAES256GCM
 )
 
-// Codec performs stateless DGPv1 data-frame authenticated encryption. Session
+// Codec performs stateless DGProto v1 data-frame authenticated encryption. Session
 // state owns sequence allocation, replay protection, direction, and epochs.
 type Codec struct {
 	aead cipher.AEAD
 }
 
 // NewCodec constructs the ChaCha20-Poly1305 data-frame codec required by
-// the DGPv1 MVP profile. Other suites are rejected without negotiation.
+// the DGProto v1 MVP profile. Other suites are rejected without negotiation.
 func NewCodec(suite CipherSuite, key []byte) (*Codec, error) {
 	if suite != CipherChaCha20Poly1305 {
 		return nil, fmt.Errorf("%w: %d", ErrUnsupportedCipher, suite)
@@ -79,7 +79,7 @@ func (c *Codec) Encrypt(messageType MessageType, sessionID [16]byte, sequence ui
 	}
 	padding, err := randomBytes(rand.Reader, int(padLength))
 	if err != nil {
-		return Frame{}, fmt.Errorf("dgpv1: generate padding: %w", err)
+		return Frame{}, fmt.Errorf("dgproto: generate padding: %w", err)
 	}
 	aad := append(headerBytes, padding...)
 	sealed := c.aead.Seal(nil, nonce(sequence), plaintext, aad)

@@ -1,4 +1,4 @@
-package dgpv1
+package dgproto
 
 import (
 	"crypto/hmac"
@@ -22,11 +22,11 @@ const (
 
 var (
 	// ErrInvalidEpoch indicates that a rekey epoch is not the immediate successor.
-	ErrInvalidEpoch = errors.New("dgpv1: invalid rekey epoch")
+	ErrInvalidEpoch = errors.New("dgproto: invalid rekey epoch")
 	// ErrEpochExhausted indicates that the uint32 rekey epoch cannot advance.
-	ErrEpochExhausted = errors.New("dgpv1: rekey epoch exhausted")
+	ErrEpochExhausted = errors.New("dgproto: rekey epoch exhausted")
 	// ErrKeyConfirmFailed indicates that a RekeyInit confirmation does not match.
-	ErrKeyConfirmFailed = errors.New("dgpv1: rekey confirmation failed")
+	ErrKeyConfirmFailed = errors.New("dgproto: rekey confirmation failed")
 )
 
 // RekeyState tracks one directional key epoch. Epoch one is established by
@@ -48,7 +48,7 @@ func (r *RekeyState) ComputeKeyConfirm(secret []byte, epoch uint32) ([32]byte, e
 		return [32]byte{}, fmt.Errorf("%w: got %d, want %d", ErrInvalidEpoch, epoch, r.Epoch+1)
 	}
 	mac := hmac.New(sha256.New, secret)
-	mac.Write([]byte("DGPv1 Rekey Confirm"))
+	mac.Write([]byte("DGProto v1 Rekey Confirm"))
 	var buf [4]byte
 	binary.LittleEndian.PutUint32(buf[:], epoch)
 	mac.Write(buf[:])
@@ -57,7 +57,7 @@ func (r *RekeyState) ComputeKeyConfirm(secret []byte, epoch uint32) ([32]byte, e
 	return confirm, nil
 }
 
-// DeriveNextKeys preserves the key-ratchet labels already used by DGPv1.
+// DeriveNextKeys preserves the key-ratchet labels already used by DGProto v1.
 // Session applies the send-labelled result independently to each crossed
 // directional traffic secret, so both peers derive the same next key.
 func DeriveNextKeys(currentSecret []byte) ([]byte, []byte, error) {
@@ -65,11 +65,11 @@ func DeriveNextKeys(currentSecret []byte) ([]byte, []byte, error) {
 		return nil, nil, fmt.Errorf("%w: got %d, want %d", ErrInvalidKeySize, len(currentSecret), KeySize)
 	}
 	mac := hmac.New(sha256.New, currentSecret)
-	mac.Write([]byte("DGPv1 Rekey Send Key"))
+	mac.Write([]byte("DGProto v1 Rekey Send Key"))
 	sendKey := mac.Sum(nil)
 
 	mac.Reset()
-	mac.Write([]byte("DGPv1 Rekey Receive Key"))
+	mac.Write([]byte("DGProto v1 Rekey Receive Key"))
 	receiveKey := mac.Sum(nil)
 	return sendKey, receiveKey, nil
 }

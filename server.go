@@ -1,4 +1,4 @@
-package dgpv1
+package dgproto
 
 import (
 	"context"
@@ -12,13 +12,13 @@ import (
 
 var (
 	// ErrServerClosed is returned when operating on a server that has been shut down.
-	ErrServerClosed = errors.New("dgpv1: server closed")
+	ErrServerClosed = errors.New("dgproto: server closed")
 
 	// ErrHandshakeFailed is returned when a Noise XX handshake cannot be completed.
-	ErrHandshakeFailed = errors.New("dgpv1: handshake failed")
+	ErrHandshakeFailed = errors.New("dgproto: handshake failed")
 
 	// ErrClientNotPermitted is returned when an authenticated client static key is not in AllowedClients.
-	ErrClientNotPermitted = errors.New("dgpv1: client static key not permitted")
+	ErrClientNotPermitted = errors.New("dgproto: client static key not permitted")
 )
 
 // AdmissionInfo is the non-secret identity and transport metadata available
@@ -112,16 +112,16 @@ func NewServer(config ServerConfig) (*Server, error) {
 		config.CipherSuite = CipherChaCha20Poly1305
 	}
 	if config.CipherSuite != CipherChaCha20Poly1305 {
-		return nil, fmt.Errorf("%w: DGPv1 requires ChaCha20-Poly1305", ErrUnsupportedCipher)
+		return nil, fmt.Errorf("%w: DGProto v1 requires ChaCha20-Poly1305", ErrUnsupportedCipher)
 	}
 	if err := config.StaticKey.validate(); err != nil {
 		return nil, err
 	}
 	if config.HandshakeTimeout < 0 {
-		return nil, errors.New("dgpv1: HandshakeTimeout must not be negative")
+		return nil, errors.New("dgproto: HandshakeTimeout must not be negative")
 	}
 	if config.ReadTimeout < 0 || config.WriteTimeout < 0 || config.IdleTimeout < 0 || config.KeepaliveInterval < 0 {
-		return nil, errors.New("dgpv1: connection timeouts must not be negative")
+		return nil, errors.New("dgproto: connection timeouts must not be negative")
 	}
 	if config.ReadTimeout > 0 {
 		livenessWindow := config.IdleTimeout
@@ -129,35 +129,35 @@ func NewServer(config ServerConfig) (*Server, error) {
 			livenessWindow = keepaliveWindow
 		}
 		if livenessWindow > 0 && config.ReadTimeout < livenessWindow {
-			return nil, errors.New("dgpv1: ReadTimeout must be zero or at least the idle/keepalive liveness window")
+			return nil, errors.New("dgproto: ReadTimeout must be zero or at least the idle/keepalive liveness window")
 		}
 	}
 	if config.HandshakeTimeout == 0 {
 		config.HandshakeTimeout = 10 * time.Second
 	}
 	if config.OutboundQueue < 0 {
-		return nil, errors.New("dgpv1: OutboundQueue must not be negative")
+		return nil, errors.New("dgproto: OutboundQueue must not be negative")
 	}
 	if config.OutboundQueue == 0 {
 		config.OutboundQueue = 16
 	}
 	if config.HandlerQueue < 0 {
-		return nil, errors.New("dgpv1: HandlerQueue must not be negative")
+		return nil, errors.New("dgproto: HandlerQueue must not be negative")
 	}
 	if config.HandlerQueue == 0 {
 		config.HandlerQueue = 16
 	}
 	if config.KeepaliveTimeout < 0 {
-		return nil, errors.New("dgpv1: KeepaliveTimeout must not be negative")
+		return nil, errors.New("dgproto: KeepaliveTimeout must not be negative")
 	}
 	if config.MaxConcurrentHandshakes < 0 {
-		return nil, errors.New("dgpv1: MaxConcurrentHandshakes must not be negative")
+		return nil, errors.New("dgproto: MaxConcurrentHandshakes must not be negative")
 	}
 	if config.MaxConcurrentHandshakes == 0 {
 		config.MaxConcurrentHandshakes = 64
 	}
 	if config.MaxActiveConnections < 0 {
-		return nil, errors.New("dgpv1: MaxActiveConnections must not be negative")
+		return nil, errors.New("dgproto: MaxActiveConnections must not be negative")
 	}
 	if config.MaxActiveConnections == 0 {
 		config.MaxActiveConnections = 1024
@@ -175,7 +175,7 @@ func NewServer(config ServerConfig) (*Server, error) {
 // Serve binds listener and processes incoming connections until Close or listener failure.
 func (s *Server) Serve(listener net.Listener) error {
 	if listener == nil {
-		return errors.New("dgpv1: nil listener")
+		return errors.New("dgproto: nil listener")
 	}
 	s.mu.Lock()
 	if s.inShutdown.Load() {

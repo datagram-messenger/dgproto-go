@@ -1,4 +1,4 @@
-package dgpv1
+package dgproto
 
 import (
 	"crypto/rand"
@@ -15,9 +15,9 @@ const noiseKeySize = 32
 
 var (
 	// ErrHandshake indicates a failed or out-of-order Noise handshake operation.
-	ErrHandshake = errors.New("dgpv1: handshake failed")
+	ErrHandshake = errors.New("dgproto: handshake failed")
 	// ErrInvalidStaticKey indicates a missing or internally inconsistent key pair.
-	ErrInvalidStaticKey = errors.New("dgpv1: invalid static key")
+	ErrInvalidStaticKey = errors.New("dgproto: invalid static key")
 	noiseSuite          = noise.NewCipherSuite(noise.DH25519, noise.CipherChaChaPoly, noise.HashSHA256)
 )
 
@@ -118,12 +118,12 @@ type Handshake struct {
 
 // NewInitiatorHandshake creates the client-side three-flight state machine.
 func NewInitiatorHandshake(static StaticKey, expectedResponderStatic []byte) (*Handshake, error) {
-	return newHandshake(roleInitiator, static, expectedResponderStatic, rand.Reader, []byte("DGPv1"))
+	return newHandshake(roleInitiator, static, expectedResponderStatic, rand.Reader, []byte("DGProto v1"))
 }
 
 // NewResponderHandshake creates the server-side three-flight state machine.
 func NewResponderHandshake(static StaticKey, expectedInitiatorStatic []byte) (*Handshake, error) {
-	return newHandshake(roleResponder, static, expectedInitiatorStatic, rand.Reader, []byte("DGPv1"))
+	return newHandshake(roleResponder, static, expectedInitiatorStatic, rand.Reader, []byte("DGProto v1"))
 }
 
 func newHandshake(role handshakeRole, static StaticKey, expectedPeer []byte, random io.Reader, prologue []byte) (*Handshake, error) {
@@ -283,7 +283,7 @@ func (h *Handshake) complete(send, receive *noise.CipherState) error {
 
 func transcriptSessionID(binding []byte) [16]byte {
 	hash := sha256.New()
-	_, _ = hash.Write([]byte("DGPv1 SessionID"))
+	_, _ = hash.Write([]byte("DGProto v1 SessionID"))
 	_, _ = hash.Write(binding)
 	var id [16]byte
 	copy(id[:], hash.Sum(nil)[:16])
