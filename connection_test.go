@@ -468,44 +468,21 @@ func TestConnectionCloseIdempotent(t *testing.T) {
 	}
 }
 
-func TestTerminalCausePrecedence(t *testing.T) {
-	transportErr := errors.New("transport")
-	handlerErr := errors.New("handler")
-	panicErr := fmt.Errorf("%w: boom", ErrHandlerPanic)
-	tests := []struct {
-		name   string
-		causes []struct {
-			err  error
-			rank uint8
-		}
-		want error
-	}{
-		{"transport-over-cancellation-and-eof", []struct {
-			err  error
-			rank uint8
-		}{{context.Canceled, 0}, {io.EOF, 0}, {transportErr, 0}}, transportErr},
-		{"handler-over-transport", []struct {
-			err  error
-			rank uint8
-		}{{transportErr, 0}, {handlerErr, 4}}, handlerErr},
-		{"panic-over-handler", []struct {
-			err  error
-			rank uint8
-		}{{handlerErr, 4}, {panicErr, 4}}, ErrHandlerPanic},
+func TestTerminalCauseRemainsFirstObservedCause(t *testing.T) {
+	first := errors.New("first terminal cause")
+	later := []error{
+		io.EOF,
+		context.Canceled,
+		errors.New("later transport failure"),
+		fmt.Errorf("%w: later panic", ErrHandlerPanic),
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			c := &Connection{}
-			for _, cause := range tt.causes {
-				if cause.rank == 0 {
-					c.recordTerminal(cause.err)
-				} else {
-					c.recordTerminalWithRank(cause.err, cause.rank)
-				}
-			}
-			if !errors.Is(c.Err(), tt.want) {
-				t.Fatalf("cause = %v, want %v", c.Err(), tt.want)
-			}
-		})
+
+	connection := &Connection{}
+	connection.recordTerminal(first)
+	for _, cause := range later {
+		connection.recordTerminal(cause)
+		if !errors.Is(connection.Err(), first) {
+			t.Fatalf("terminal cause changed to %v after recording %v", connection.Err(), cause)
+		}
 	}
 }
