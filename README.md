@@ -1,40 +1,57 @@
-# dgproto
+<div align="center">
 
-> Go implementation of **DGProto v1** — a binary,
-> session-oriented, cryptographically secured application protocol for
-> low-latency bidirectional communication between native clients and Go backends.
+# DGProto for Go
+
+**The protocol repository for Datagram.**
+
+A strict Go implementation of the DGProto v1 wire protocol and secure session runtime.
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/datagram-messenger/dgproto-go.svg)](https://pkg.go.dev/github.com/datagram-messenger/dgproto-go)
+[![Go](https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go&logoColor=white)](https://go.dev/)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
----
+[Quick start](#quick-start) · [Protocol](docs/protocol/dgproto-v1.md) · [Documentation](#documentation) · [Contributing](CONTRIBUTING.md)
 
-## Table of Contents
-
-1. [Overview](#overview)
-2. [Architecture](#architecture)
-3. [Features](#features)
-4. [Wire Header](#wire-header-40-bytes)
-5. [Message Types](#message-types)
-6. [Quick Start](#quick-start)
-7. [Connection API](#connection-api)
-8. [Dependencies](#dependencies)
-9. [Documentation](#documentation)
-10. [Contributing](#contributing)
+</div>
 
 ---
 
 ## Overview
 
-DGProto v1 is a self-contained Go package that provides everything needed to
-establish mutually-authenticated, encrypted, session-oriented connections over
-TCP. It is designed for use in the Datagram Messenger system, where
-Rust/Tauri desktop clients communicate with Go microservice backends.
+This repository contains **Datagram's protocol implementation**, not the
+Datagram application server. The `dgproto` Go package implements the strict MVP
+profile of DGProto v1: binary framing, typed messages, a three-flight Noise XX
+handshake, authenticated sessions, replay protection, rekeying, and a TCP
+connection runtime.
 
-The MVP profile fixes the transport to **TCP** and the cipher to
-**ChaCha20-Poly1305**. Frames begin directly with the 40-byte `DGP1` header —
-there is no separate length prefix.
+The MVP has a deliberately fixed profile:
 
----
+- TCP stream transport;
+- `Noise_XX_25519_ChaChaPoly_SHA256`;
+- ChaCha20-Poly1305 data-frame encryption;
+- a 40-byte little-endian `DGP1` header with no outer length prefix.
+
+The [DGProto v1 specification](docs/protocol/dgproto-v1.md) is the source of
+truth for wire behavior. The Go API is documented on
+[pkg.go.dev](https://pkg.go.dev/github.com/datagram-messenger/dgproto-go).
+
+> [!IMPORTANT]
+> DGProto is security-sensitive infrastructure. Persist static private keys
+> securely, authenticate peer static keys, and review the specification before
+> changing wire-visible behavior.
+
+## Project status
+
+DGProto v1 is under active development and currently implements the strict MVP
+profile. The repository has no published version tags yet; consumers should pin
+a reviewed commit rather than assume API or wire-format stability from the
+`main` branch.
+
+The current implementation includes server-side connection acceptance and an
+explicit initiator handshake API. It is a protocol library, not a complete
+messenger backend: application routing, account authentication, persistence,
+and service configuration belong in the related
+[Datagram Server](https://github.com/datagram-messenger/server) repository.
 
 ## Architecture
 
@@ -124,42 +141,78 @@ Followed by: `Payload` · `AEAD Tag (16 bytes, data frames only)` · `Padding`.
 
 ---
 
-## Quick Start
+## Prerequisites
+
+- [Go 1.25 or newer](https://go.dev/doc/install)
+- Git, when cloning the repository or contributing
+- A C toolchain for race-detector runs (`go test -race`)
+
+## Quick start
+
+Add the module to an existing Go project:
+
+```sh
+go get github.com/datagram-messenger/dgproto-go
+```
+
+The following minimal program starts a DGProto server. It accepts any client
+whose Noise handshake is valid; production applications should configure
+`AllowedClients` or use `Admission` to enforce an explicit identity policy.
 
 ```go
+package main
+
 import (
+    "context"
+    "errors"
+    "log"
+    "net"
+
     dgproto "github.com/datagram-messenger/dgproto-go"
 )
 
-// Generate or load a long-term static key pair
-staticKey, err := dgproto.GenerateStaticKey()
-if err != nil {
-    log.Fatal(err)
-}
+func main() {
+    staticKey, err := dgproto.GenerateStaticKey()
+    if err != nil {
+        log.Fatal(err)
+    }
+    // Persist staticKey securely and reuse it across restarts in production.
 
-// Server — accept TCP connections and perform Noise XX
-srv, err := dgproto.NewServer(dgproto.ServerConfig{
-    StaticKey:   staticKey,
-    CipherSuite: dgproto.CipherChaCha20Poly1305,
-    Handler: func(ctx context.Context, conn *dgproto.Connection, msg any) error {
-        if m, ok := msg.(*dgproto.EncryptedData); ok {
-            return conn.Send(dgproto.EncryptedData{Payload: m.Payload}) // echo
-        }
-        return nil
-    },
-})
-if err != nil {
-    log.Fatal(err)
-}
+    srv, err := dgproto.NewServer(dgproto.ServerConfig{
+        StaticKey: staticKey,
+        Handler: func(_ context.Context, conn *dgproto.Connection, msg any) error {
+            if data, ok := msg.(*dgproto.EncryptedData); ok {
+                return conn.Send(dgproto.EncryptedData{Payload: data.Payload})
+            }
+            return nil
+        },
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
 
-ln, _ := net.Listen("tcp", ":4242")
-srv.Serve(ln)
+    listener, err := net.Listen("tcp", "127.0.0.1:4242")
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer listener.Close()
+
+    if err := srv.Serve(listener); err != nil && !errors.Is(err, dgproto.ErrServerClosed) {
+        log.Fatal(err)
+    }
+}
 ```
 
-For a step-by-step guide including client setup and connection configuration,
-see [`docs/guides/getting-started.md`](docs/guides/getting-started.md).
+Run it with:
 
----
+```sh
+go run .
+```
+
+The package intentionally exposes the client/initiator handshake as an explicit
+three-flight state machine. See the
+[getting-started guide](docs/guides/getting-started.md) for client setup,
+identity handling, connection configuration, and backpressure behavior.
 
 ## Connection API
 
@@ -176,18 +229,60 @@ see [`docs/guides/getting-started.md`](docs/guides/getting-started.md).
 
 ---
 
+## Scope and limitations
+
+The strict MVP supports TCP, Noise XX, ChaCha20-Poly1305, encrypted application
+messages, Ping/Pong, acknowledgements, session close, replay protection,
+directional rekeying, padding, bounded queues, connection limits, and graceful
+shutdown.
+
+It does **not** implement or negotiate QUIC, transport obfuscation, Noise IK,
+resumption tickets, 0-RTT, or alternative cipher suites. Message type `0x07` and
+flags reserved for post-MVP features are rejected by the session API. Padding
+reduces length-based fingerprinting but does not hide the fixed `DGP1` magic or
+provide transport obfuscation.
+
+The server permits any successfully authenticated Noise peer when
+`AllowedClients` is empty and no rejecting `Admission` handler is configured.
+Applications are responsible for defining and persisting their peer-identity
+policy.
+
+## Development
+
+Run these commands from the repository root:
+
+```sh
+go test ./...
+go test -race ./...
+go vet ./...
+go test -run TestJSONWireVectors ./...
+go test -run MVP ./...
+```
+
+The race detector requires CGO and a supported C toolchain. See the
+[contributing guide](CONTRIBUTING.md) for focused test commands, fuzzing,
+benchmarks, wire-vector maintenance, and protocol-change requirements.
+
+## Repository structure
+
+```text
+docs/
+  architecture/   Package layout and data flow
+  guides/         Integration guidance
+  protocol/       Normative DGProto v1 specification
+testdata/          Cross-language wire vectors
+*.go               Framing, crypto, handshake, session, transport, and runtime
+```
+
 ## Dependencies
 
 | Module | Purpose |
 |---|---|
 | `github.com/flynn/noise` | Noise Protocol Framework state machine |
-| `golang.org/x/crypto` | ChaCha20-Poly1305 AEAD |
+| `golang.org/x/crypto` | ChaCha20-Poly1305 and cryptographic primitives |
 
-No application-layer or server-framework dependencies. The package is
-intentionally self-contained so it can be imported by both server and client
-implementations.
-
----
+No application framework is included. Protocol behavior remains concentrated in
+this module so server and client implementations can share the same wire rules.
 
 ## Documentation
 
@@ -197,12 +292,17 @@ implementations.
 | [`docs/architecture/overview.md`](docs/architecture/overview.md) | Package layout and data-flow diagrams |
 | [`docs/guides/getting-started.md`](docs/guides/getting-started.md) | Integration guide |
 
-For a higher-level routing, authentication, and middleware layer see
-[dgpserver](https://github.com/datagram-messenger/datagram-server/tree/main/pkg/dgpserver).
+## Related repositories
 
----
+- [Datagram Server](https://github.com/datagram-messenger/server) — Datagram's Go backend and service runtime.
+- [`dgpserver`](https://github.com/datagram-messenger/server/tree/main/pkg/dgpserver) — higher-level routing, authentication, middleware, and lifecycle package built on DGProto.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow, test
-requirements, wire-vector format, and code style guide.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting changes. Wire-visible
+changes require specification updates, compatibility review, and updated test
+vectors. Security-sensitive changes should remain small and explicitly tested.
+
+## License
+
+Licensed under the [Apache License 2.0](LICENSE).
