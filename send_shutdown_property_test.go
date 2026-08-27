@@ -186,14 +186,6 @@ func assertTerminalSendRejection(t *testing.T, connection *Connection, send func
 	}
 }
 
-func readSessionClose(t *testing.T, transport *TCPTransport, session *Session) {
-	t.Helper()
-	message := readConnectionMessage(t, transport, session)
-	if _, ok := message.(*SessionClose); !ok {
-		t.Fatalf("control close = %T, want *SessionClose", message)
-	}
-}
-
 func receiveBounded[T any](t *testing.T, result <-chan T) T {
 	t.Helper()
 	select {
