@@ -1,5 +1,5 @@
 {
-  "schema": "dgproto-wire-v1",
+  "schema": "dgpv1-wire-v1",
   "vectors": [
     {
       "name": "header-ping",

@@ -105,7 +105,7 @@ JSON test vectors live in `testdata/vectors/`. Each file is a strict object:
 
 ```json
 {
-  "schema": "dgproto-wire-v1",
+  "schema": "dgpv1-wire-v1",
   "vectors": [
     {
       "name": "unique-name",
@@ -165,7 +165,7 @@ and one invalid vector covering the new behaviour.
 
 The wire format is normative. **Any change that affects on-wire bytes,
 message types, or cryptographic derivations MUST be accompanied by a matching
-update to [`docs/protocol/dgp-v1.md`](docs/protocol/dgp-v1.md).**
+update to [`docs/protocol/dgproto-v1.md`](docs/protocol/dgproto-v1.md).**
 
 Backward-incompatible changes require a new version section or a new
 specification document. Do not silently alter the existing normative text

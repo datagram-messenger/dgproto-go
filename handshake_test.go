@@ -9,11 +9,11 @@ import (
 func TestHandshakeXXRoundTrip(t *testing.T) {
 	clientKey := testStaticKey(t, 1)
 	serverKey := testStaticKey(t, 33)
-	client, err := newHandshake(roleInitiator, clientKey, serverKey.Public(), bytes.NewReader(bytes.Repeat([]byte{65}, 32)), []byte("DGProto v1"))
+	client, err := newHandshake(roleInitiator, clientKey, serverKey.Public(), bytes.NewReader(bytes.Repeat([]byte{65}, 32)), []byte("DGPv1"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	server, err := newHandshake(roleResponder, serverKey, clientKey.Public(), bytes.NewReader(bytes.Repeat([]byte{97}, 32)), []byte("DGProto v1"))
+	server, err := newHandshake(roleResponder, serverKey, clientKey.Public(), bytes.NewReader(bytes.Repeat([]byte{97}, 32)), []byte("DGPv1"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +139,7 @@ func TestHandshakeWrongPrologueAndIdentity(t *testing.T) {
 	serverKey := testStaticKey(t, 33)
 	wrongKey := testStaticKey(t, 65)
 
-	client, _ := newHandshake(roleInitiator, clientKey, nil, bytes.NewReader(bytes.Repeat([]byte{1}, 32)), []byte("DGProto v1"))
+	client, _ := newHandshake(roleInitiator, clientKey, nil, bytes.NewReader(bytes.Repeat([]byte{1}, 32)), []byte("DGPv1"))
 	server, _ := newHandshake(roleResponder, serverKey, nil, bytes.NewReader(bytes.Repeat([]byte{2}, 32)), []byte("other"))
 	one, _ := client.WriteFlight()
 	if err := server.ReadFlight(one); err != nil {
@@ -207,8 +207,8 @@ func TestHandshakeOwnershipAndStaticKeyLoading(t *testing.T) {
 func TestHandshakeDeterministicVector(t *testing.T) {
 	clientKey := testStaticKey(t, 1)
 	serverKey := testStaticKey(t, 33)
-	client, _ := newHandshake(roleInitiator, clientKey, nil, bytes.NewReader(bytes.Repeat([]byte{65}, 32)), []byte("DGProto v1"))
-	server, _ := newHandshake(roleResponder, serverKey, nil, bytes.NewReader(bytes.Repeat([]byte{97}, 32)), []byte("DGProto v1"))
+	client, _ := newHandshake(roleInitiator, clientKey, nil, bytes.NewReader(bytes.Repeat([]byte{65}, 32)), []byte("DGPv1"))
+	server, _ := newHandshake(roleResponder, serverKey, nil, bytes.NewReader(bytes.Repeat([]byte{97}, 32)), []byte("DGPv1"))
 	one, _ := client.WriteFlight()
 	_ = server.ReadFlight(one)
 	two, _ := server.WriteFlight()

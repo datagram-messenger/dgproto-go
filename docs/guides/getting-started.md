@@ -141,6 +141,6 @@ authentication, and structured logging.
 
 ## Further Reading
 
-- [Wire Specification](../protocol/dgp-v1.md) — normative byte-level protocol definition
+- [Wire Specification](../protocol/dgproto-v1.md) — normative byte-level protocol definition
 - [Architecture Overview](../architecture/overview.md) — package layout and data flow
 - [CONTRIBUTING.md](../../CONTRIBUTING.md) — how to contribute and run tests

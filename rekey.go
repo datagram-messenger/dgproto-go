@@ -48,7 +48,7 @@ func (r *RekeyState) ComputeKeyConfirm(secret []byte, epoch uint32) ([32]byte, e
 		return [32]byte{}, fmt.Errorf("%w: got %d, want %d", ErrInvalidEpoch, epoch, r.Epoch+1)
 	}
 	mac := hmac.New(sha256.New, secret)
-	mac.Write([]byte("DGProto v1 Rekey Confirm"))
+	mac.Write([]byte("DGPv1 Rekey Confirm"))
 	var buf [4]byte
 	binary.LittleEndian.PutUint32(buf[:], epoch)
 	mac.Write(buf[:])
@@ -65,11 +65,11 @@ func DeriveNextKeys(currentSecret []byte) ([]byte, []byte, error) {
 		return nil, nil, fmt.Errorf("%w: got %d, want %d", ErrInvalidKeySize, len(currentSecret), KeySize)
 	}
 	mac := hmac.New(sha256.New, currentSecret)
-	mac.Write([]byte("DGProto v1 Rekey Send Key"))
+	mac.Write([]byte("DGPv1 Rekey Send Key"))
 	sendKey := mac.Sum(nil)
 
 	mac.Reset()
-	mac.Write([]byte("DGProto v1 Rekey Receive Key"))
+	mac.Write([]byte("DGPv1 Rekey Receive Key"))
 	receiveKey := mac.Sum(nil)
 	return sendKey, receiveKey, nil
 }

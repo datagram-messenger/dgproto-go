@@ -20,7 +20,7 @@ github.com/datagram-messenger/dgproto-go
 ├── server.go               — Server: Accept loop, per-connection lifecycle
 ├── testdata/vectors/       — JSON wire-format test vectors
 └── docs/
-    ├── protocol/dgp-v1.md  — normative wire specification
+    ├── protocol/dgproto-v1.md  — normative wire specification
     ├── architecture/       — this file and related design notes
     └── guides/             — integration and usage guides
 ```
@@ -63,7 +63,7 @@ provides the Noise state machine.
 ### Session ID from Channel Binding
 After the third Noise flight both peers independently derive:
 ```
-SessionID = SHA-256("DGProto v1 SessionID" || channel_binding)[0:16]
+SessionID = SHA-256("DGPv1 SessionID" || channel_binding)[0:16]
 ```
 This ties the session identifier cryptographically to the completed handshake
 transcript, preventing session-fixation attacks.

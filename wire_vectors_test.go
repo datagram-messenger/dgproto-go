@@ -16,7 +16,7 @@ import (
 	"testing"
 )
 
-const wireVectorSchema = "dgproto-wire-v1"
+const wireVectorSchema = "dgpv1-wire-v1"
 
 type wireVectorFile struct {
 	Schema  string       `json:"schema"`

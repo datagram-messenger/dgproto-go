@@ -1,6 +1,6 @@
 # dgproto
 
-> Go implementation of **DGProto v1 (DGProto v1)** — a binary,
+> Go implementation of **DGProto v1** — a binary,
 > session-oriented, cryptographically secured application protocol for
 > low-latency bidirectional communication between native clients and Go backends.
 
@@ -70,7 +70,7 @@ full package layout and data-flow diagrams.
 - **Noise XX mutual authentication** — `Noise_XX_25519_ChaChaPoly_SHA256`,
   1.5-RTT; both peers authenticate with long-term X25519 static keys.
 - **Session IDs from channel binding** —
-  `SHA-256("DGProto v1 SessionID" || noise_channel_binding)[0:16]`, derived
+  `SHA-256("DGPv1 SessionID" || noise_channel_binding)[0:16]`, derived
   independently by both peers after the third Noise flight.
 - **Replay protection** — per-direction 64-bit sliding window
   (IPsec/WireGuard model), epoch-aware.
@@ -193,7 +193,7 @@ implementations.
 
 | Document | Description |
 |---|---|
-| [`docs/protocol/dgp-v1.md`](docs/protocol/dgp-v1.md) | Normative wire specification |
+| [`docs/protocol/dgproto-v1.md`](docs/protocol/dgproto-v1.md) | Normative wire specification |
 | [`docs/architecture/overview.md`](docs/architecture/overview.md) | Package layout and data-flow diagrams |
 | [`docs/guides/getting-started.md`](docs/guides/getting-started.md) | Integration guide |
 

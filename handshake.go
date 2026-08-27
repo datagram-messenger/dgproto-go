@@ -118,12 +118,12 @@ type Handshake struct {
 
 // NewInitiatorHandshake creates the client-side three-flight state machine.
 func NewInitiatorHandshake(static StaticKey, expectedResponderStatic []byte) (*Handshake, error) {
-	return newHandshake(roleInitiator, static, expectedResponderStatic, rand.Reader, []byte("DGProto v1"))
+	return newHandshake(roleInitiator, static, expectedResponderStatic, rand.Reader, []byte("DGPv1"))
 }
 
 // NewResponderHandshake creates the server-side three-flight state machine.
 func NewResponderHandshake(static StaticKey, expectedInitiatorStatic []byte) (*Handshake, error) {
-	return newHandshake(roleResponder, static, expectedInitiatorStatic, rand.Reader, []byte("DGProto v1"))
+	return newHandshake(roleResponder, static, expectedInitiatorStatic, rand.Reader, []byte("DGPv1"))
 }
 
 func newHandshake(role handshakeRole, static StaticKey, expectedPeer []byte, random io.Reader, prologue []byte) (*Handshake, error) {
@@ -283,7 +283,7 @@ func (h *Handshake) complete(send, receive *noise.CipherState) error {
 
 func transcriptSessionID(binding []byte) [16]byte {
 	hash := sha256.New()
-	_, _ = hash.Write([]byte("DGProto v1 SessionID"))
+	_, _ = hash.Write([]byte("DGPv1 SessionID"))
 	_, _ = hash.Write(binding)
 	var id [16]byte
 	copy(id[:], hash.Sum(nil)[:16])

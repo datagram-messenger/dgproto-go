@@ -36,13 +36,13 @@ func BenchmarkMessengerWireFormats(b *testing.B) {
 			b.Fatal(err)
 		}
 		b.Run(fmt.Sprintf("%dB-text", textSize), func(b *testing.B) {
-			benchmarkDGProto v1Secure(b, payload)
+			benchmarkDGProtoV1Secure(b, payload)
 			benchmarkHTTP1SyntheticSecure(b, payload)
 		})
 	}
 }
 
-func benchmarkDGProto v1Secure(b *testing.B, payload []byte) {
+func benchmarkDGProtoV1Secure(b *testing.B, payload []byte) {
 	codec, err := NewCodec(CipherChaCha20Poly1305, make([]byte, KeySize))
 	if err != nil {
 		b.Fatal(err)
@@ -58,7 +58,7 @@ func benchmarkDGProto v1Secure(b *testing.B, payload []byte) {
 	}
 	assertDGPDecode(b, codec, wire, payload)
 
-	b.Run("DGProto v1-secure-envelope/encode", func(b *testing.B) {
+	b.Run("DGProtoV1-secure-envelope/encode", func(b *testing.B) {
 		b.ReportAllocs()
 		b.SetBytes(int64(len(payload)))
 		for i := 0; i < b.N; i++ {
@@ -73,7 +73,7 @@ func benchmarkDGProto v1Secure(b *testing.B, payload []byte) {
 		}
 		reportWireMetrics(b, len(wire), len(payload))
 	})
-	b.Run("DGProto v1-secure-envelope/decode", func(b *testing.B) {
+	b.Run("DGProtoV1-secure-envelope/decode", func(b *testing.B) {
 		b.ReportAllocs()
 		b.SetBytes(int64(len(payload)))
 		for i := 0; i < b.N; i++ {
@@ -210,7 +210,7 @@ func BenchmarkSyntheticWireCodecs(b *testing.B) {
 		for i := range payload {
 			payload[i] = byte(i)
 		}
-		b.Run(fmt.Sprintf("DGProto v1FrameAEAD/%dB/encode", size), func(b *testing.B) {
+		b.Run(fmt.Sprintf("DGProtoV1FrameAEAD/%dB/encode", size), func(b *testing.B) {
 			codec, _ := NewCodec(CipherChaCha20Poly1305, make([]byte, KeySize))
 			b.ReportAllocs()
 			b.SetBytes(int64(size))
@@ -225,7 +225,7 @@ func BenchmarkSyntheticWireCodecs(b *testing.B) {
 				}
 			}
 		})
-		b.Run(fmt.Sprintf("DGProto v1FrameAEAD/%dB/decode", size), func(b *testing.B) {
+		b.Run(fmt.Sprintf("DGProtoV1FrameAEAD/%dB/decode", size), func(b *testing.B) {
 			codec, _ := NewCodec(CipherChaCha20Poly1305, make([]byte, KeySize))
 			frame, _ := codec.Encrypt(MessageTypeEncryptedData, [16]byte{1}, 1, payload, 0)
 			wire, _ := frame.MarshalBinary()
