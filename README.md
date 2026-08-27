@@ -2,8 +2,6 @@
 
 # DGProto for Go
 
-**The protocol repository for Datagram.**
-
 A strict Go implementation of the DGProto v1 wire protocol and secure session runtime.
 
 [![CI](https://github.com/datagram-messenger/dgproto-go/actions/workflows/ci.yml/badge.svg)](https://github.com/datagram-messenger/dgproto-go/actions/workflows/ci.yml)
@@ -44,7 +42,7 @@ truth for wire behavior. The Go API is documented on
 ## Project status and versioning
 
 **DGProto v1 / specification 1.0.0** identifies the protocol and its draft wire
-specification. **Go module v0.1.0** identifies the planned library release;
+specification. **Go module v0.1.0** is the current released library version;
 these version numbers are independent.
 
 The specification remains **Draft — Implementation Track**. Until the wire
@@ -90,8 +88,9 @@ full package layout and data-flow diagrams.
 
 ## Features
 
-- **Noise XX mutual authentication** — `Noise_XX_25519_ChaChaPoly_SHA256`,
-  1.5-RTT; both peers authenticate with long-term X25519 static keys.
+- **Noise XX static-key authentication** —
+  `Noise_XX_25519_ChaChaPoly_SHA256`, 1.5-RTT; peers expose long-term X25519
+  static keys, while applications must enforce trust and authorization policy.
 - **Session IDs from channel binding** —
   `SHA-256("DGPv1 SessionID" || noise_channel_binding)[0:16]`, derived
   independently by both peers after the third Noise flight.
@@ -100,12 +99,11 @@ full package layout and data-flow diagrams.
 - **Atomic rekeying** — HMAC-SHA256 key ratchet with constant-time
   confirmation; sender triggers at 2³² frames or 10 minutes, receiver enforces
   strict epoch ordering.
-- **Anti-fingerprinting padding** — random cleartext padding, length bucketed
-  (256 / 512 / 1024 / 1500 bytes), authenticated inside the AEAD AAD without
-  being encrypted.
-- **Little-endian wire format** — matches native encoding on x86-64 and
-  aarch64; safe for zero-copy `zerocopy` struct reinterpretation in Rust
-  clients.
+- **Anti-fingerprinting padding** — caller-selected 0–255 bytes of random
+  cleartext padding, authenticated inside the AEAD AAD without being encrypted;
+  suggested length buckets belong to application/spec policy, not the runtime.
+- **Little-endian wire format** — multi-byte header and message fields use
+  explicit little-endian encoding.
 - **TLV envelope** — 1-byte type, 2-byte LE length, 4-byte aligned value;
   used for variable-length L3 payloads.
 - **Connection runtime** — concurrent read / write / maintenance goroutines
@@ -137,13 +135,13 @@ Followed by: `Payload` · `AEAD Tag (16 bytes, data frames only)` · `Padding`.
 | Value  | Name                              | Direction        |
 |--------|-----------------------------------|------------------|
 | `0x01` | HandshakeInit                     | client → server  |
-| `0x02` | HandshakeResponse / HandshakeFinish | both           |
+| `0x02` | HandshakeResponse / HandshakeFinish | server → client (flight 2); client → server (flight 3) |
 | `0x03` | EncryptedData                     | both             |
 | `0x04` | Ping / Pong                       | both             |
 | `0x05` | SessionClose                      | both             |
 | `0x06` | Ack                               | both             |
 | `0x07` | Reserved (post-MVP resumption ticket) | —              |
-| `0x08` | RekeyInit                         | sender direction |
+| `0x08` | RekeyInit                         | either peer → its receiver |
 | `0x09` | Error                             | both             |
 
 ---
@@ -159,7 +157,7 @@ Followed by: `Payload` · `AEAD Tag (16 bytes, data frames only)` · `Padding`.
 Add the module to an existing Go project:
 
 ```sh
-go get github.com/datagram-messenger/dgproto-go
+go get github.com/datagram-messenger/dgproto-go@v0.1.0
 ```
 
 The following minimal program starts a DGProto server. It accepts any client
@@ -223,8 +221,6 @@ go get github.com/datagram-messenger/dgproto-go@v0.1.0
 go run .
 ```
 
-Before `v0.1.0` is published, replace the version with a reviewed commit hash.
-
 The package intentionally exposes the client/initiator handshake as an explicit
 three-flight state machine. See the
 [getting-started guide](docs/guides/getting-started.md) for client setup,
@@ -237,10 +233,10 @@ identity handling, connection configuration, and backpressure behavior.
 | `Send(msg)` | no | Enqueue; returns `ErrOutboundQueueFull` if full |
 | `TrySend(msg)` | no | Explicit nonblocking form of `Send` |
 | `SendContext(ctx, msg)` | yes | Block until slot free or ctx cancelled |
-| `SendAndWait(ctx, msg)` | yes | Block until transport write completes |
-| `SendPadded(msg, pad)` | no | Control per-frame anti-fingerprint padding |
-| `Close()` | yes | Send `SessionClose`, then stop the runtime |
-| `Done()` | — | Channel closed when all loops exit |
+| `SendAndWait(ctx, msg)` | yes | Wait for local transport write; not peer delivery or processing |
+| `SendPadded(msg, pad)` | no | Select exact per-frame padding length (0–255 bytes) |
+| `Close()` | yes | Bounded `SessionClose` write, then initiate shutdown |
+| `Done()` | — | Channel closed after all loops exit; wait on it for full termination |
 | `Err()` | — | Terminal cause after `Done()` is closed |
 
 ---
