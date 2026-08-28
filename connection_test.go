@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -441,6 +442,39 @@ func TestConnectionLocalCloseSendsSessionClose(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitConnection(t, connection)
+}
+
+func TestConnectionClosePrefersBufferedWriteResultOverCancellation(t *testing.T) {
+	previousProcs := runtime.GOMAXPROCS(1)
+	t.Cleanup(func() { runtime.GOMAXPROCS(previousProcs) })
+
+	writeErr := errors.New("close write failed")
+	for iteration := range 100 {
+		localConn, peerConn := net.Pipe()
+		localSession, _ := testSessions(t)
+		connection := NewConnection(NewTCPTransport(localConn), localSession, ConnectionConfig{
+			WriteTimeout: connectionTestTimeout,
+		})
+		connection.started.Store(true)
+
+		closed := make(chan error, 1)
+		go func() {
+			closed <- connection.closeGracefully(SessionClose{}, ErrConnectionClosed)
+		}()
+
+		request := <-connection.closeRequest
+		// Let closeGracefully block waiting for a result. Cancellation commits
+		// the blocked select first; the buffered result must still take priority.
+		runtime.Gosched()
+		connection.cancel(ErrConnectionClosed)
+		request.result <- writeErr
+		runtime.Gosched()
+
+		if err := <-closed; !errors.Is(err, writeErr) {
+			t.Fatalf("iteration %d: Close error = %v, want buffered write result %v", iteration, err, writeErr)
+		}
+		_ = peerConn.Close()
+	}
 }
 
 func TestConnectionCloseIdempotent(t *testing.T) {
