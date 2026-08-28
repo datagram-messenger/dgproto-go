@@ -1,27 +1,13 @@
-# Security Policy
-
-DGProto is a security-sensitive protocol library. Please do not disclose
-suspected vulnerabilities in a public issue, discussion, or pull request.
+# Security policy
 
 ## Reporting a vulnerability
 
-Use GitHub's **Report a vulnerability** form on the repository's Security page
-(private vulnerability reporting), when available. If that form is unavailable,
-open a private draft security advisory from the repository's **Security →
-Advisories** page and contact the repository maintainers through that advisory.
+Do not open a public issue. Report suspected vulnerabilities through the private [GitHub security advisory form](https://github.com/datagram-messenger/dgproto-go/security/advisories/new), including affected versions, impact, and reproduction details.
 
-Include the affected revision, impact, reproduction details or a proof of
-concept, and any suggested remediation. Do not include real private keys,
-credentials, or user data.
+Security fixes target supported tagged releases and the current default branch. Identify both the module release and protocol draft when reporting wire-level behavior.
 
-Maintainers should acknowledge the report in the private advisory, coordinate
-validation and remediation there, and publish disclosure only after a fix and
-release plan are ready. No response-time or bounty commitment is currently
-promised.
+## Authentication and authorization
 
-## Supported versions
+A successful Noise XX handshake authenticates possession of a static key; it does not grant application permissions. `ServerConfig.AllowedClients` can restrict authenticated client keys. Use `ServerConfig.Admission` for application authorization after authentication and before dispatch; see [Admission and authorization](docs/guides/getting-started.md#admission-and-authorization).
 
-The project is pre-v1 and the DGProto v1 specification remains a draft. Until a
-support matrix is published, only the latest repository revision is evaluated
-for security fixes. Production users should pin reviewed versions and monitor
-repository security advisories.
+Applications remain responsible for key provisioning and rotation, authorization policy, secret storage, dependency updates, endpoint hardening, and padding policy. DGProto v1 permits ChaCha20-Poly1305 only; AES-GCM is not protocol compliant.

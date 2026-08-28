@@ -559,3 +559,16 @@ These ideas require a future versioned profile with complete wire semantics,
 negotiation, downgrade protection, replay policy, and interoperability tests.
 
 *End of DGProto v1 Specification.*
+
+
+## Implementation constraints and application responsibilities
+
+The AEAD is strictly ChaCha20-Poly1305. Its 96-bit nonce is `4 zero bytes || LE64(sequence)`. AES-GCM and other AEAD substitutions are not conforming.
+
+`MaxFrameSize` is 65535 bytes including the header and, for encrypted frames, the 16-byte tag. The maximum encrypted plaintext region (payload plus padding) is `65535 - HeaderSize - 16`; handshake frames omit the outer tag and allow `65535 - HeaderSize`.
+
+`ErrorMessage` (`0x09`) is `code:u16 big-endian || context:utf8`; context may be empty. Protocol acknowledgements do not provide general application request/response correlation. Applications define correlation, delivery confirmation, and processing confirmation when needed.
+
+Padding is authenticated zero fill. Applications choose pad lengths and traffic-analysis policy.
+
+The Go implementation uses `golang.org/x/crypto`, does not use `unsafe` or `sync.Pool`, and does not permit AES-GCM. External Rust, relay, and deployment statements are non-normative unless explicitly incorporated here.
