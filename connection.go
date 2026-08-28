@@ -254,7 +254,13 @@ func (c *Connection) closeGracefully(message SessionClose, cause error) error {
 			select {
 			case result = <-request.result:
 			case <-c.ctx.Done():
-				result = context.Cause(c.ctx)
+				// writeLoop publishes the close write result before it cancels
+				// the connection. Prefer that result when both are ready.
+				select {
+				case result = <-request.result:
+				default:
+					result = context.Cause(c.ctx)
+				}
 			case <-timer.C:
 				result = context.DeadlineExceeded
 			}
