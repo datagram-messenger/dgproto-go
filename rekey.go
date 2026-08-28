@@ -1,4 +1,4 @@
-package dgpv1
+package dgproto
 
 import (
 	"crypto/hmac"
@@ -22,11 +22,11 @@ const (
 
 var (
 	// ErrInvalidEpoch indicates that a rekey epoch is not the immediate successor.
-	ErrInvalidEpoch = errors.New("dgpv1: invalid rekey epoch")
+	ErrInvalidEpoch = errors.New("dgproto: invalid rekey epoch")
 	// ErrEpochExhausted indicates that the uint32 rekey epoch cannot advance.
-	ErrEpochExhausted = errors.New("dgpv1: rekey epoch exhausted")
+	ErrEpochExhausted = errors.New("dgproto: rekey epoch exhausted")
 	// ErrKeyConfirmFailed indicates that a RekeyInit confirmation does not match.
-	ErrKeyConfirmFailed = errors.New("dgpv1: rekey confirmation failed")
+	ErrKeyConfirmFailed = errors.New("dgproto: rekey confirmation failed")
 )
 
 // RekeyState tracks one directional key epoch. Epoch one is established by
@@ -57,7 +57,7 @@ func (r *RekeyState) ComputeKeyConfirm(secret []byte, epoch uint32) ([32]byte, e
 	return confirm, nil
 }
 
-// DeriveNextKeys preserves the key-ratchet labels already used by DGPv1.
+// DeriveNextKeys preserves the key-ratchet labels already used by DGProto v1.
 // Session applies the send-labelled result independently to each crossed
 // directional traffic secret, so both peers derive the same next key.
 func DeriveNextKeys(currentSecret []byte) ([]byte, []byte, error) {

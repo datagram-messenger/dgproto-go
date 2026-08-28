@@ -1,10 +1,9 @@
-package dgpv1
+package dgproto
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -12,17 +11,17 @@ import (
 
 var (
 	// ErrConnectionClosed indicates that the connection runtime has terminated.
-	ErrConnectionClosed = errors.New("dgpv1: connection closed")
+	ErrConnectionClosed = errors.New("dgproto: connection closed")
 	// ErrIdleTimeout indicates that inbound activity did not occur before the idle timeout.
-	ErrIdleTimeout = errors.New("dgpv1: connection idle timeout")
+	ErrIdleTimeout = errors.New("dgproto: connection idle timeout")
 	// ErrKeepaliveTimeout indicates that an outstanding ping was not acknowledged in time.
-	ErrKeepaliveTimeout = errors.New("dgpv1: keepalive timeout")
+	ErrKeepaliveTimeout = errors.New("dgproto: keepalive timeout")
 	// ErrOutboundQueueFull indicates that a nonblocking send found the outbound queue full.
-	ErrOutboundQueueFull = errors.New("dgpv1: outbound queue full")
+	ErrOutboundQueueFull = errors.New("dgproto: outbound queue full")
 	// ErrHandlerQueueFull indicates that pending handler work exceeded its bound.
-	ErrHandlerQueueFull = errors.New("dgpv1: handler queue full")
+	ErrHandlerQueueFull = errors.New("dgproto: handler queue full")
 	// ErrHandlerPanic wraps a panic recovered from a MessageHandler.
-	ErrHandlerPanic = errors.New("dgpv1: handler panic")
+	ErrHandlerPanic = errors.New("dgproto: handler panic")
 )
 
 // MessageHandler handles one authenticated inbound message. The runtime calls
@@ -76,7 +75,6 @@ type Connection struct {
 	closeOnce    sync.Once
 	causeMu      sync.Mutex
 	terminal     error
-	terminalRank uint8
 	started      atomic.Bool
 	closing      atomic.Bool
 	pingNonce    atomic.Uint64
@@ -86,7 +84,7 @@ type Connection struct {
 // NewConnection constructs a stopped established-session runtime.
 func NewConnection(transport *TCPTransport, session *Session, config ConnectionConfig) *Connection {
 	if transport == nil || session == nil {
-		panic("dgpv1: nil connection dependency")
+		panic("dgproto: nil connection dependency")
 	}
 	if config.OutboundQueue <= 0 {
 		config.OutboundQueue = 16
@@ -228,9 +226,8 @@ func (c *Connection) Close() error {
 // Done closes after all runtime loops exit.
 func (c *Connection) Done() <-chan struct{} { return c.done }
 
-// Err returns the terminal cause, or nil while running. When termination signals
-// race, handler panics take precedence over handler errors, transport/protocol
-// errors, local or context cancellation, and ordinary EOF, in that order.
+// Err returns the first terminal cause, or nil while running. Once recorded,
+// the cause remains stable for all waiters and lifecycle hooks.
 func (c *Connection) Err() error {
 	c.causeMu.Lock()
 	defer c.causeMu.Unlock()
@@ -285,38 +282,11 @@ func (c *Connection) shutdown(cause error) {
 }
 
 func (c *Connection) recordTerminal(cause error) {
-	c.recordTerminalWithRank(cause, terminalCauseRank(cause))
-}
-
-func (c *Connection) recordTerminalWithRank(cause error, rank uint8) {
-	if errors.Is(cause, ErrHandlerPanic) {
-		rank = 5
-	}
 	c.causeMu.Lock()
-	if rank > c.terminalRank {
-		c.terminal, c.terminalRank = cause, rank
+	if c.terminal == nil {
+		c.terminal = cause
 	}
 	c.causeMu.Unlock()
-}
-
-func terminalCauseRank(cause error) uint8 {
-	switch {
-	case errors.Is(cause, ErrHandlerPanic):
-		return 5
-	case cause != nil && !errors.Is(cause, io.EOF) && !errors.Is(cause, context.Canceled) && !errors.Is(cause, context.DeadlineExceeded) && !errors.Is(cause, ErrConnectionClosed):
-		return 3
-	case errors.Is(cause, ErrConnectionClosed), errors.Is(cause, context.Canceled), errors.Is(cause, context.DeadlineExceeded):
-		return 2
-	default:
-		return 1
-	}
-}
-
-func handlerCauseRank(cause error) uint8 {
-	if errors.Is(cause, ErrHandlerPanic) {
-		return 5
-	}
-	return 4
 }
 
 // abort force-closes network I/O without waiting for the graceful close path.
@@ -522,7 +492,6 @@ func (c *Connection) handlerLoop() {
 			default:
 			}
 			if err := c.callHandler(message); err != nil {
-				c.recordTerminalWithRank(err, handlerCauseRank(err))
 				c.shutdown(err)
 				return
 			}

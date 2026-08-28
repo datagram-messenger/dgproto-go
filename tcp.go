@@ -1,4 +1,4 @@
-package dgpv1
+package dgproto
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 
 const minFrameSize = HeaderSize
 
-// TCPTransport carries canonical DGPv1 frames directly over a TCP stream.
+// TCPTransport carries canonical DGProto v1 frames directly over a TCP stream.
 // Frames have no transport length prefix. One read and one write may proceed
 // concurrently; reads are serialized with reads and writes with writes.
 type TCPTransport struct {
@@ -24,13 +24,13 @@ type TCPTransport struct {
 // NewTCPTransport wraps conn and panics if conn is nil.
 func NewTCPTransport(conn net.Conn) *TCPTransport {
 	if conn == nil {
-		panic("dgpv1: nil TCP connection")
+		panic("dgproto: nil TCP connection")
 	}
 	return &TCPTransport{conn: conn}
 }
 
 // ReadFrame blocks until one complete frame is read or ctx is canceled.
-// It derives the body length from the fixed DGPv1 header, not a length prefix.
+// It derives the body length from the fixed DGProto v1 header, not a length prefix.
 func (t *TCPTransport) ReadFrame(ctx context.Context) (Frame, error) {
 	t.read.Lock()
 	defer t.read.Unlock()

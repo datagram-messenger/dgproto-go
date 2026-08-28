@@ -1,4 +1,4 @@
-package dgpv1
+package dgproto
 
 import (
 	"context"
@@ -183,14 +183,6 @@ func assertTerminalSendRejection(t *testing.T, connection *Connection, send func
 		if err := send(connection, context.Background(), uint64(i+100)); !errors.Is(err, ErrConnectionClosed) {
 			t.Fatalf("post-terminal send %d = %v, want %v", i, err, ErrConnectionClosed)
 		}
-	}
-}
-
-func readSessionClose(t *testing.T, transport *TCPTransport, session *Session) {
-	t.Helper()
-	message := readConnectionMessage(t, transport, session)
-	if _, ok := message.(*SessionClose); !ok {
-		t.Fatalf("control close = %T, want *SessionClose", message)
 	}
 }
 

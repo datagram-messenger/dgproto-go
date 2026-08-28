@@ -1,4 +1,4 @@
-package dgpv1
+package dgproto
 
 import (
 	"crypto/rand"
@@ -15,9 +15,9 @@ const noiseKeySize = 32
 
 var (
 	// ErrHandshake indicates a failed or out-of-order Noise handshake operation.
-	ErrHandshake = errors.New("dgpv1: handshake failed")
+	ErrHandshake = errors.New("dgproto: handshake failed")
 	// ErrInvalidStaticKey indicates a missing or internally inconsistent key pair.
-	ErrInvalidStaticKey = errors.New("dgpv1: invalid static key")
+	ErrInvalidStaticKey = errors.New("dgproto: invalid static key")
 	noiseSuite          = noise.NewCipherSuite(noise.DH25519, noise.CipherChaChaPoly, noise.HashSHA256)
 )
 

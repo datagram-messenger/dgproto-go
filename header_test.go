@@ -1,4 +1,4 @@
-package dgpv1
+package dgproto
 
 import (
 	"encoding/binary"

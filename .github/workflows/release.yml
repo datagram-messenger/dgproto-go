@@ -1,0 +1,143 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing stable SemVer tag to validate and optionally publish
+        required: true
+        default: v0.1.0
+        type: string
+      publish:
+        description: Publish the GitHub Release after validation
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate release
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+    steps:
+      - name: Validate stable SemVer tag
+        shell: bash
+        run: |
+          if [[ ! "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Release tags must use stable SemVer: vMAJOR.MINOR.PATCH (for example, v0.1.0)."
+            exit 1
+          fi
+
+      - name: Checkout exact tag
+        uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ env.TAG }}
+          persist-credentials: false
+
+      - name: Verify exact tag is available
+        shell: bash
+        run: git rev-parse --verify "refs/tags/$TAG^{commit}"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.25.x
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Test
+        run: go test -count=1 ./...
+
+      - name: Test with race detector (Linux, CGO)
+        env:
+          CGO_ENABLED: '1'
+        run: go test -race -count=1 ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Check formatting
+        shell: bash
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [[ -n "$unformatted" ]]; then
+            echo "The following files are not gofmt-formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Check module files are tidy
+        shell: bash
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: Run govulncheck
+        run: govulncheck ./...
+
+      - name: Test as an external consumer
+        shell: bash
+        run: |
+          consumer_dir="$(mktemp -d)"
+          cd "$consumer_dir"
+          go mod init example.com/dgproto-consumer
+          go mod edit -replace=github.com/datagram-messenger/dgproto-go="$GITHUB_WORKSPACE"
+          go get github.com/datagram-messenger/dgproto-go
+          cat > consumer_test.go <<'EOF'
+          package consumer
+
+          import (
+              "testing"
+              _ "github.com/datagram-messenger/dgproto-go"
+          )
+
+          func TestModuleCanBeConsumed(t *testing.T) {}
+          EOF
+          go test ./...
+
+  publish:
+    name: Publish GitHub Release
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && inputs.publish)
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+    steps:
+      - name: Checkout exact tag
+        uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ env.TAG }}
+          persist-credentials: false
+
+      - name: Verify exact tag is available
+        shell: bash
+        run: git rev-parse --verify "refs/tags/$TAG^{commit}"
+
+      - name: Create GitHub Release with generated notes if absent
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "GitHub Release $TAG already exists; nothing to do."
+          else
+            gh release create "$TAG" --verify-tag --generate-notes --title "$TAG"
+          fi

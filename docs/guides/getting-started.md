@@ -1,146 +1,61 @@
-# Getting Started with DGPv1
+# Getting started
 
-This guide walks you through importing the package, setting up a server, and
-connecting a client — all in Go.
+DGProto is a protocol and session library, not an application server. It does not expose a high-level client dial-and-handshake helper. Clients must provide transport integration and drive the exported handshake and session primitives for their deployment.
 
-## Prerequisites
+## Server
 
-- Go 1.25 or later
-- A module that imports `github.com/datagram-messenger/protocol`
-
-```bash
-go get github.com/datagram-messenger/protocol
-```
-
-## 1. Generate Static Key Pairs
-
-Both peers need a long-term X25519 static key. Generate one (or load an
-existing one from persistent storage):
+This complete example generates a server static key, creates a TCP listener, and passes the listener to `Server.Serve`:
 
 ```go
-import dgpv1 "github.com/datagram-messenger/protocol"
+package main
 
-staticKey, err := dgpv1.GenerateStaticKey()
-if err != nil {
-    log.Fatal(err)
-}
-// Persist the private key material securely in your application's key store.
-// Use LoadStaticKey to restore it on the next start.
-```
+import (
+    "context"
+    "errors"
+    "log"
+    "net"
 
-## 2. Start a Server
+    dgproto "github.com/datagram-messenger/dgproto-go"
+)
 
-```go
-srv, err := dgpv1.NewServer(dgpv1.ServerConfig{
-    StaticKey:   staticKey,
-    CipherSuite: dgpv1.CipherChaCha20Poly1305,
-    Handler: func(ctx context.Context, conn *dgpv1.Connection, msg any) error {
-        switch m := msg.(type) {
-        case *dgpv1.EncryptedData:
-            // echo the payload back
-            return conn.Send(dgpv1.EncryptedData{Payload: m.Payload})
-        }
-        return nil
-    },
-})
-if err != nil {
-    log.Fatal(err)
-}
+func main() {
+    key, err := dgproto.GenerateStaticKey()
+    if err != nil {
+        log.Fatal(err)
+    }
 
-ln, err := net.Listen("tcp", ":4242")
-if err != nil {
-    log.Fatal(err)
-}
-log.Println("listening on :4242")
-srv.Serve(ln) // blocks until listener is closed
-```
+    listener, err := net.Listen("tcp", ":9000")
+    if err != nil {
+        log.Fatal(err)
+    }
 
-## 3. Connect a Client
+    server, err := dgproto.NewServer(dgproto.ServerConfig{
+        StaticKey: key,
+        Handler: func(ctx context.Context, conn *dgproto.Connection, message any) error {
+            log.Printf("received %T", message)
+            return nil
+        },
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
 
-The package exposes the initiator handshake as an explicit three-flight state
-machine. A client must:
-
-1. Dial TCP and wrap the connection with `NewTCPTransport`.
-2. Create `NewInitiatorHandshake(clientKey, serverPublicKey)`.
-3. Exchange flights 1–3 as handshake frames (`0x01`, then `0x02`).
-4. Obtain `Handshake.Result()` and call `NewSessionFromHandshake`.
-5. Construct `NewConnection(transport, session, config)` and call `Start(ctx)`.
-
-This explicit API keeps identity verification and connection lifecycle under
-the caller's control. See `server_test.go` for an end-to-end initiator example.
-After `Start`, send an application message with:
-
-```go
-if err := client.Send(dgpv1.EncryptedData{Payload: []byte("hello")}); err != nil {
-    log.Fatal(err)
+    if err := server.Serve(listener); err != nil && !errors.Is(err, dgproto.ErrServerClosed) {
+        log.Fatal(err)
+    }
 }
 ```
 
-## 4. Connection Configuration
+Production services should persist and protect the static key instead of generating a new identity on every start.
 
-`ConnectionConfig` controls timeouts, keepalives, and queue depths:
+## Admission and authorization
 
-```go
-dgpv1.ConnectionConfig{
-    HandshakeTimeout:  5 * time.Second,
-    ReadTimeout:       30 * time.Second,
-    WriteTimeout:      10 * time.Second,
-    IdleTimeout:       2 * time.Minute,
-    KeepaliveInterval: 30 * time.Second,
-    KeepaliveTimeout:  10 * time.Second,
-    OutboundQueue:     64,
-    HandlerQueue:      64,
-}
-```
+Noise XX authenticates the peer static key; application authorization remains a separate step. `ServerConfig.AllowedClients` can restrict connections to an allowlist of client static public keys. `ServerConfig.Admission` runs after successful Noise authentication and before message dispatch, so applications can apply additional authorization policy without receiving traffic secrets.
 
-| Field | Default | Description |
-|---|---|---|
-| `HandshakeTimeout` | none | Max time for Noise XX to complete |
-| `ReadTimeout` | none | Per-frame read deadline |
-| `WriteTimeout` | none | Per-frame write deadline |
-| `IdleTimeout` | none | Close if no inbound frames received |
-| `KeepaliveInterval` | none | Send Ping after this idle period |
-| `KeepaliveTimeout` | 2× interval | Close if Pong not received in time |
-| `OutboundQueue` | 16 | Buffered outbound message slots |
-| `HandlerQueue` | 16 | Buffered inbound dispatch slots |
+## Lifecycle
 
-## 5. Sending with Backpressure
+* `Connection.Close()` performs the connection close handshake.
+* `Server.Close()` stops the listener and gracefully closes active connections.
+* `Server.Abort()` immediately stops the server and active connections.
 
-| Method | Blocks? | Use when |
-|---|---|---|
-| `Send(msg)` | no — returns `ErrOutboundQueueFull` | fire-and-forget, high throughput |
-| `TrySend(msg)` | no | explicit nonblocking form |
-| `SendContext(ctx, msg)` | yes — until slot free or ctx cancelled | moderate backpressure tolerance |
-| `SendAndWait(ctx, msg)` | yes — until transport write completes | guaranteed ordering / flow control |
-| `SendPadded(msg, pad)` | no | control per-frame anti-fingerprint padding |
-
-## 6. Error Handling
-
-`Connection.Err()` returns the terminal cause after `Done()` is closed.
-Multiple concurrent termination signals are ranked:
-
-1. `ErrHandlerPanic` (highest)
-2. Handler-returned error
-3. Transport / protocol error
-4. Context cancellation / `ErrConnectionClosed`
-5. Clean EOF (lowest)
-
-```go
-<-client.Done()
-if err := client.Err(); err != nil && !errors.Is(err, dgpv1.ErrConnectionClosed) {
-    log.Printf("connection terminated: %v", err)
-}
-```
-
-## 7. Integration with dgpserver
-
-For a higher-level routing, authentication, and middleware layer see
-[dgpserver](https://github.com/datagram-messenger/datagram-server/tree/main/pkg/dgpserver).
-It wraps this package and provides request routing, JWT-based client
-authentication, and structured logging.
-
-## Further Reading
-
-- [Wire Specification](../protocol/dgp-v1.md) — normative byte-level protocol definition
-- [Architecture Overview](../architecture/overview.md) — package layout and data flow
-- [CONTRIBUTING.md](../../CONTRIBUTING.md) — how to contribute and run tests
+All three methods return an error; callers should handle it.

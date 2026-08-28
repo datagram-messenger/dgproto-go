@@ -1,9 +1,16 @@
-# Datagram Protocol Version 1 (DGPv1) Specification
+# Datagram Protocol Version 1 (DGProto v1) Specification
 
 **Status:** Draft — Implementation Track
 **Version:** 1.0.0
 **Category:** Application-Layer Secure Transport Protocol
 **Normative profile:** Current MVP
+
+This specification version describes **DGProto v1** and is independent of the
+Go module release version (planned `v0.1.0`). While this document remains a
+draft, edits may change wire behavior; `1.0.0` and the `v1` protocol name do not
+yet promise compatibility between draft revisions. Wire compatibility should be
+claimed only after stabilization and cross-implementation interoperability
+validation.
 
 > **Scope.** Unless a section is explicitly labeled **Historical / Post-MVP**, normative terms such as MUST, SHOULD, and MAY describe the current MVP. The MVP uses TCP, a three-flight Noise XX handshake, and ChaCha20-Poly1305. QUIC, transport obfuscation, Noise IK, resumption tickets, and 0-RTT are not implemented, negotiated, required, or permitted by the MVP. They are retained only in §8 as protocol history.
 
@@ -13,12 +20,12 @@
 
 ### 1.1 Executive Summary
 
-DGPv1 is a binary, session-oriented, cryptographically secured application
+DGProto v1 is a binary, session-oriented, cryptographically secured application
 protocol designed for low-latency, bidirectional, multiplexed communication
 between native desktop clients (Rust, embedded in Tauri v2) and
 high-concurrency Go microservice backends.
 
-DGPv1 separates transport, framing, cryptographic, session, and application
+DGProto v1 separates transport, framing, cryptographic, session, and application
 layers. The current MVP carries its fixed binary frames over TCP and uses the
 Noise Protocol Framework, modern AEAD, and HKDF-based key schedules rather
 than bespoke cryptographic constructions.
@@ -78,7 +85,7 @@ Future profiles may substitute layers only after separate specification.
 
 ### 2.2 Byte Ordering
 
-All multi-byte integer fields in DGPv1 are encoded **Little-Endian**,
+All multi-byte integer fields in DGProto v1 are encoded **Little-Endian**,
 chosen to match native encoding on the overwhelming majority of deployment
 targets (x86_64, aarch64) and to avoid byte-swapping overhead in the
 zero-copy Rust parsing path.
@@ -223,15 +230,15 @@ HandshakeInit Payload:
 +----------------------+----------+--------------------------------+
 ```
 
-Noise XX message 1 is `→ e`. Its payload is exactly 36 bytes in the DGPv1
+Noise XX message 1 is `→ e`. Its payload is exactly 36 bytes in the DGProto v1
 wrapper. It carries no Noise payload, static key material, or application data.
 
 ### 4.3 Phases 2–3 — Authentication & Key Derivation (Msg Type `0x02`)
 
-Noise XX always has three messages. DGPv1 carries both the server's second
+Noise XX always has three messages. DGProto v1 carries both the server's second
 flight and the client's third flight in handshake frames with message type
 `0x02`; direction and handshake state distinguish the two payload shapes.
-Neither frame has an outer DGPv1 AEAD tag.
+Neither frame has an outer DGProto v1 AEAD tag.
 
 ```
 HandshakeResponse Payload (server → client, Noise XX message 2):
@@ -255,7 +262,7 @@ Session ID until message 3 has been produced or authenticated, respectively. Let
 At that point both parties compute the full Diffie-Hellman transcript and
 derive the session key schedule via the Noise `Split()` convention. The two
 independent, directional 256-bit traffic keys are exactly the standard Noise
-`Split()` outputs; DGPv1 MUST NOT apply an additional HKDF or label. In the
+`Split()` outputs; DGProto v1 MUST NOT apply an additional HKDF or label. In the
 canonical Noise order `(k1, k2) = Split()`, `k1` protects initiator-to-responder
 traffic and `k2` protects responder-to-initiator traffic. The client therefore
 uses `k1` to send and `k2` to receive; the server uses `k2` to send and `k1` to
@@ -488,7 +495,7 @@ frame) to reduce control-message overhead under high message throughput.
 
 ### 7.1 Threat Model
 
-DGPv1 is designed against the following adversary classes:
+DGProto v1 is designed against the following adversary classes:
 
 - **Passive network observer** — capable of recording all traffic on the
   path, attempting traffic analysis, protocol fingerprinting, or
@@ -496,7 +503,7 @@ DGPv1 is designed against the following adversary classes:
 - **Active on-path adversary (MitM)** — capable of intercepting,
   modifying, injecting, or replaying frames.
 - **DPI / censorship middlebox** — attempting to classify and selectively
-  block DGPv1 traffic based on static byte signatures or packet-length
+  block DGProto v1 traffic based on static byte signatures or packet-length
   distributions.
 - **Malicious or compromised relay** — a future node forwarding traffic
   that must not be able to decrypt session content even if it can observe
@@ -538,7 +545,7 @@ non-constant-time comparisons). Accordingly:
 
 ## 8. Historical / Post-MVP Design Notes (Non-Normative)
 
-Earlier DGPv1 drafts proposed the following extensions. They are retained as
+Earlier DGProto v1 drafts proposed the following extensions. They are retained as
 protocol history only. Normative terms in this section do not apply to the MVP.
 An MVP implementation MUST NOT require, advertise, or send them:
 
@@ -551,4 +558,17 @@ An MVP implementation MUST NOT require, advertise, or send them:
 These ideas require a future versioned profile with complete wire semantics,
 negotiation, downgrade protection, replay policy, and interoperability tests.
 
-*End of DGPv1 Specification.*
+*End of DGProto v1 Specification.*
+
+
+## Implementation constraints and application responsibilities
+
+The AEAD is strictly ChaCha20-Poly1305. Its 96-bit nonce is `4 zero bytes || LE64(sequence)`. AES-GCM and other AEAD substitutions are not conforming.
+
+`MaxFrameSize` is 65535 bytes including the header and, for encrypted frames, the 16-byte tag. The maximum encrypted plaintext region (payload plus padding) is `65535 - HeaderSize - 16`; handshake frames omit the outer tag and allow `65535 - HeaderSize`.
+
+`ErrorMessage` (`0x09`) is `code:u16 big-endian || context:utf8`; context may be empty. Protocol acknowledgements do not provide general application request/response correlation. Applications define correlation, delivery confirmation, and processing confirmation when needed.
+
+Padding is authenticated zero fill. Applications choose pad lengths and traffic-analysis policy.
+
+The Go implementation uses `golang.org/x/crypto`, does not use `unsafe` or `sync.Pool`, and does not permit AES-GCM. External Rust, relay, and deployment statements are non-normative unless explicitly incorporated here.

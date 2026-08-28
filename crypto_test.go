@@ -1,4 +1,4 @@
-package dgpv1
+package dgproto
 
 import (
 	"bytes"
@@ -12,7 +12,7 @@ func TestCodecRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	plaintext := []byte("authenticated DGPv1 payload")
+	plaintext := []byte("authenticated DGProto v1 payload")
 	frame, err := codec.Encrypt(MessageTypeEncryptedData, [16]byte{1}, 0x0102030405060708, plaintext, 17)
 	if err != nil {
 		t.Fatal(err)

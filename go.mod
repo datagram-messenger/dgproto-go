@@ -1,4 +1,4 @@
-module github.com/datagram-messenger/protocol
+module github.com/datagram-messenger/dgproto-go
 
 go 1.25.0
 
