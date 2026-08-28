@@ -48,5 +48,5 @@ See [Getting started](docs/guides/getting-started.md) for a compile-checked serv
 - [Architecture](docs/architecture/overview.md)
 - [Normative protocol](docs/protocol/dgproto-v1.md)
 - [Test vectors](testdata/vectors/README.md)
-- [Contributing](CONTRIBUTING.md)
+- [Contributing](.github/CONTRIBUTING.md)
 - [Security](SECURITY.md)

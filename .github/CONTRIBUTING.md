@@ -2,7 +2,7 @@
 
 ## Scope
 
-Read `AGENTS.md` and the normative [DGProto v1 specification](docs/protocol/dgproto-v1.md). Keep wire changes, implementation, tests, vectors, and documentation synchronized. The canonical repository path is `github.com/datagram-messenger/dgproto-go`.
+When present in your checkout, read the repository-local `AGENTS.md` and the normative [DGProto v1 specification](../docs/protocol/dgproto-v1.md). Keep wire changes, implementation, tests, vectors, and documentation synchronized. The canonical repository path is `github.com/datagram-messenger/dgproto-go`.
 
 ## Local baseline
 
@@ -31,4 +31,4 @@ CI or release jobs may additionally run race, fuzz, interoperability, benchmark,
 
 ## Pull requests
 
-Describe motivation, behavioral impact, validation, protocol compatibility, and follow-up work. Keep changes focused and identify normative specification changes explicitly. Report vulnerabilities through the [security policy](SECURITY.md), not a public issue.
+Describe motivation, behavioral impact, validation, protocol compatibility, and follow-up work. Keep changes focused and identify normative specification changes explicitly. Report vulnerabilities through the [security policy](../SECURITY.md), not a public issue.
