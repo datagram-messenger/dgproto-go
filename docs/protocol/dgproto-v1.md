@@ -5,10 +5,10 @@
 **Category:** Application-Layer Secure Transport Protocol
 **Normative profile:** Current MVP
 
-This specification version describes **DGProto v1** and is independent of the
-Go module release version (planned `v0.1.0`). While this document remains a
-draft, edits may change wire behavior; `1.0.0` and the `v1` protocol name do not
-yet promise compatibility between draft revisions. Wire compatibility should be
+This specification version describes **DGProto v1** and is independent of Go
+module release versions. While this document remains a draft, edits may change
+wire behavior; `1.0.0` and the `v1` protocol name do not yet promise
+compatibility between draft revisions. Wire compatibility should be
 claimed only after stabilization and cross-implementation interoperability
 validation.
 
@@ -567,8 +567,8 @@ The AEAD is strictly ChaCha20-Poly1305. Its 96-bit nonce is `4 zero bytes || LE6
 
 `MaxFrameSize` is 65535 bytes including the header and, for encrypted frames, the 16-byte tag. The maximum encrypted plaintext region (payload plus padding) is `65535 - HeaderSize - 16`; handshake frames omit the outer tag and allow `65535 - HeaderSize`.
 
-`ErrorMessage` (`0x09`) is `code:u16 big-endian || context:utf8`; context may be empty. Protocol acknowledgements do not provide general application request/response correlation. Applications define correlation, delivery confirmation, and processing confirmation when needed.
+`ErrorMessage` (`0x09`) is `code:u16 little-endian || context:utf8`; context may be empty. Like every other multi-byte integer field, its code uses little-endian encoding. Protocol acknowledgements do not provide general application request/response correlation. Applications define correlation, delivery confirmation, and processing confirmation when needed.
 
-Padding is authenticated zero fill. Applications choose pad lengths and traffic-analysis policy.
+Cleartext padding is cryptographically random. For encrypted frames it is authenticated as AAD using the exact received 40-byte header: `header[0:40] || padding`. Applications choose pad lengths and traffic-analysis policy.
 
 The Go implementation uses `golang.org/x/crypto`, does not use `unsafe` or `sync.Pool`, and does not permit AES-GCM. External Rust, relay, and deployment statements are non-normative unless explicitly incorporated here.

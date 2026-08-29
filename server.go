@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -123,6 +124,18 @@ func NewServer(config ServerConfig) (*Server, error) {
 	if config.ReadTimeout < 0 || config.WriteTimeout < 0 || config.IdleTimeout < 0 || config.KeepaliveInterval < 0 {
 		return nil, errors.New("dgproto: connection timeouts must not be negative")
 	}
+	if config.KeepaliveTimeout < 0 {
+		return nil, errors.New("dgproto: KeepaliveTimeout must not be negative")
+	}
+	if config.KeepaliveInterval > 0 && config.KeepaliveTimeout == 0 {
+		if config.KeepaliveInterval > time.Duration(math.MaxInt64/2) {
+			return nil, errors.New("dgproto: KeepaliveInterval is too large")
+		}
+		config.KeepaliveTimeout = 2 * config.KeepaliveInterval
+	}
+	if config.KeepaliveInterval > 0 && config.KeepaliveTimeout > time.Duration(math.MaxInt64)-config.KeepaliveInterval {
+		return nil, errors.New("dgproto: keepalive liveness window is too large")
+	}
 	if config.ReadTimeout > 0 {
 		livenessWindow := config.IdleTimeout
 		if keepaliveWindow := config.KeepaliveInterval + config.KeepaliveTimeout; keepaliveWindow > livenessWindow {
@@ -146,9 +159,6 @@ func NewServer(config ServerConfig) (*Server, error) {
 	}
 	if config.HandlerQueue == 0 {
 		config.HandlerQueue = 16
-	}
-	if config.KeepaliveTimeout < 0 {
-		return nil, errors.New("dgproto: KeepaliveTimeout must not be negative")
 	}
 	if config.MaxConcurrentHandshakes < 0 {
 		return nil, errors.New("dgproto: MaxConcurrentHandshakes must not be negative")

@@ -189,6 +189,42 @@ func TestNewServerTimeoutConsistency(t *testing.T) {
 	}
 }
 
+func TestNewServerNormalizesKeepaliveTimeoutBeforeValidation(t *testing.T) {
+	tests := []struct {
+		name             string
+		readTimeout      time.Duration
+		keepaliveTimeout time.Duration
+		wantErr          bool
+		wantTimeout      time.Duration
+	}{
+		{name: "default rejected by short read timeout", readTimeout: 2 * time.Second, wantErr: true},
+		{name: "default accepted and stored", readTimeout: 3 * time.Second, wantTimeout: 2 * time.Second},
+		{name: "explicit timeout accepted", readTimeout: 1500 * time.Millisecond, keepaliveTimeout: 500 * time.Millisecond, wantTimeout: 500 * time.Millisecond},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			config := validServerConfig(t)
+			config.ReadTimeout = test.readTimeout
+			config.KeepaliveInterval = time.Second
+			config.KeepaliveTimeout = test.keepaliveTimeout
+
+			server, err := NewServer(config)
+			if test.wantErr {
+				if err == nil {
+					t.Fatal("expected liveness validation error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if server.config.KeepaliveTimeout != test.wantTimeout {
+				t.Fatalf("KeepaliveTimeout = %v, want %v", server.config.KeepaliveTimeout, test.wantTimeout)
+			}
+		})
+	}
+}
+
 func TestNewServerAdmissionDefaults(t *testing.T) {
 	server, err := NewServer(validServerConfig(t))
 	if err != nil {

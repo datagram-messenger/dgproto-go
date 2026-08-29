@@ -14,7 +14,7 @@
 
 Go 1.25+ implementation of the draft DGProto v1 wire protocol and secure session runtime. It is a protocol library, not an application server.
 
-- **L0:** TCP length-delimited transport
+- **L0:** TCP stream transport with framing derived from the fixed header; no outer length prefix
 - **L1:** fixed header and strict frame parsing
 - **L2:** Noise XX and ChaCha20-Poly1305 protection
 - **L3:** epochs, rekeying, replay protection, keepalive, and lifecycle
