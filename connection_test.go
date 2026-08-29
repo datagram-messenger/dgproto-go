@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"runtime"
 	"sync"
@@ -75,6 +76,36 @@ func waitConnection(t *testing.T, connection *Connection) {
 	case <-connection.Done():
 	case <-time.After(connectionTestTimeout):
 		t.Fatal("connection did not stop")
+	}
+}
+
+func TestNewConnectionKeepaliveTimeoutDefault(t *testing.T) {
+	tests := []struct {
+		name     string
+		interval time.Duration
+		want     time.Duration
+	}{
+		{name: "normal", interval: time.Second, want: 2 * time.Second},
+		{name: "boundary", interval: time.Duration(math.MaxInt64 / 2), want: time.Duration(math.MaxInt64 - 1)},
+		{name: "overflow saturates", interval: time.Duration(math.MaxInt64/2 + 1), want: time.Duration(math.MaxInt64)},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			localConn, peerConn := net.Pipe()
+			defer peerConn.Close()
+			localSession, _ := testSessions(t)
+			connection := NewConnection(NewTCPTransport(localConn), localSession, ConnectionConfig{
+				KeepaliveInterval: test.interval,
+			})
+			defer connection.Close()
+
+			if connection.config.KeepaliveTimeout != test.want {
+				t.Fatalf("KeepaliveTimeout = %v, want %v", connection.config.KeepaliveTimeout, test.want)
+			}
+			if connection.config.KeepaliveTimeout <= 0 {
+				t.Fatalf("KeepaliveTimeout = %v, want a nonpositive/immediate timeout to be impossible", connection.config.KeepaliveTimeout)
+			}
+		})
 	}
 }
 

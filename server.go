@@ -128,10 +128,11 @@ func NewServer(config ServerConfig) (*Server, error) {
 		return nil, errors.New("dgproto: KeepaliveTimeout must not be negative")
 	}
 	if config.KeepaliveInterval > 0 && config.KeepaliveTimeout == 0 {
-		if config.KeepaliveInterval > time.Duration(math.MaxInt64/2) {
+		var representable bool
+		config.KeepaliveTimeout, representable = defaultKeepaliveTimeout(config.KeepaliveInterval)
+		if !representable {
 			return nil, errors.New("dgproto: KeepaliveInterval is too large")
 		}
-		config.KeepaliveTimeout = 2 * config.KeepaliveInterval
 	}
 	if config.KeepaliveInterval > 0 && config.KeepaliveTimeout > time.Duration(math.MaxInt64)-config.KeepaliveInterval {
 		return nil, errors.New("dgproto: keepalive liveness window is too large")

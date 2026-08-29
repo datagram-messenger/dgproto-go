@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -40,6 +41,13 @@ type ConnectionConfig struct {
 	KeepaliveInterval time.Duration
 	KeepaliveTimeout  time.Duration
 	Handler           MessageHandler
+}
+
+func defaultKeepaliveTimeout(interval time.Duration) (time.Duration, bool) {
+	if interval > time.Duration(math.MaxInt64/2) {
+		return time.Duration(math.MaxInt64), false
+	}
+	return 2 * interval, true
 }
 
 type queuedMessage struct {
@@ -93,7 +101,7 @@ func NewConnection(transport *TCPTransport, session *Session, config ConnectionC
 		config.HandlerQueue = 16
 	}
 	if config.KeepaliveInterval > 0 && config.KeepaliveTimeout <= 0 {
-		config.KeepaliveTimeout = 2 * config.KeepaliveInterval
+		config.KeepaliveTimeout, _ = defaultKeepaliveTimeout(config.KeepaliveInterval)
 	}
 	ctx, cancel := context.WithCancelCause(context.Background())
 	return &Connection{

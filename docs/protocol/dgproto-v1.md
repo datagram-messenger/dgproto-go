@@ -58,13 +58,15 @@ Future profiles may substitute layers only after separate specification.
 ### 1.3 Protocol Capabilities
 
 - **Multiplexing.** A single encrypted session (identified by a 128-bit
-  Session ID) may carry multiple independent logical message streams,
-  distinguished at L3 by a `Stream ID` sub-field inside the L4 payload
-  envelope (not part of the L1 fixed header — see §5).
-- **Pipelining.** Multiple in-flight requests are supported without
-  head-of-line blocking at the application layer; correlation is achieved
-  via monotonically increasing per-direction Sequence Numbers combined
-  with an explicit `Ack` control message (§5.6).
+  Session ID) may carry multiple logical message streams, distinguished at L3
+  by a `Stream ID` sub-field inside the L4 payload envelope (not part of the L1
+  fixed header — see §5). The Go runtime dispatches application handlers
+  serially per connection, so streams do not imply parallel application
+  processing and a slow handler can delay later messages.
+- **Pipelining.** Multiple requests may be in flight for correlation via
+  monotonically increasing per-direction Sequence Numbers combined with an
+  explicit `Ack` control message (§5.6). This does not eliminate transport- or
+  application-layer head-of-line blocking.
 
 ---
 

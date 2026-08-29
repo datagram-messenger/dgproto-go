@@ -3,6 +3,7 @@ package dgproto
 import (
 	"context"
 	"errors"
+	"math"
 	"net"
 	"sync"
 	"testing"
@@ -220,6 +221,40 @@ func TestNewServerNormalizesKeepaliveTimeoutBeforeValidation(t *testing.T) {
 			}
 			if server.config.KeepaliveTimeout != test.wantTimeout {
 				t.Fatalf("KeepaliveTimeout = %v, want %v", server.config.KeepaliveTimeout, test.wantTimeout)
+			}
+		})
+	}
+}
+
+func TestNewServerPreservesKeepaliveOverflowValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		config  func(ServerConfig) ServerConfig
+		wantErr string
+	}{
+		{
+			name: "unrepresentable default",
+			config: func(config ServerConfig) ServerConfig {
+				config.KeepaliveInterval = time.Duration(math.MaxInt64/2 + 1)
+				return config
+			},
+			wantErr: "dgproto: KeepaliveInterval is too large",
+		},
+		{
+			name: "unrepresentable liveness window",
+			config: func(config ServerConfig) ServerConfig {
+				config.KeepaliveInterval = time.Duration(math.MaxInt64)
+				config.KeepaliveTimeout = 1
+				return config
+			},
+			wantErr: "dgproto: keepalive liveness window is too large",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := NewServer(test.config(validServerConfig(t)))
+			if err == nil || err.Error() != test.wantErr {
+				t.Fatalf("error = %v, want %q", err, test.wantErr)
 			}
 		})
 	}
