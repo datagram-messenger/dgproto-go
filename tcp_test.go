@@ -193,6 +193,45 @@ func TestTCPTransportContextCancellation(t *testing.T) {
 	}
 }
 
+func TestNewTCPTransportNilPanics(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("NewTCPTransport(nil) did not panic")
+		}
+	}()
+	NewTCPTransport(nil)
+}
+
+func TestNewConnectionNilPanics(t *testing.T) {
+	key, err := GenerateStaticKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, b := net.Pipe()
+	defer a.Close()
+	defer b.Close()
+	transport := NewTCPTransport(a)
+
+	t.Run("nil transport", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Fatal("NewConnection(nil, session, config) did not panic")
+			}
+		}()
+		_ = key // suppress unused warning
+		NewConnection(nil, &Session{}, ConnectionConfig{})
+	})
+
+	t.Run("nil session", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Fatal("NewConnection(transport, nil, config) did not panic")
+			}
+		}()
+		NewConnection(transport, nil, ConnectionConfig{})
+	})
+}
+
 func TestTCPTransportCompletedOperationDoesNotLeakCancellationDeadline(t *testing.T) {
 	a, b := net.Pipe()
 	defer a.Close()

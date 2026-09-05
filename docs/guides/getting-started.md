@@ -59,3 +59,26 @@ Noise XX authenticates the peer static key; application authorization remains a 
 * `Server.Abort()` immediately stops the server and active connections.
 
 All three methods return an error; callers should handle it.
+
+## Production timeout guidance
+
+All timeout fields default to zero, which disables the corresponding deadline.
+For internet-facing deployments, set explicit values to bound resource usage:
+
+| Field | Recommended starting point | Purpose |
+|---|---|---|
+| `HandshakeTimeout` | 10 s (server default) | Bound unauthenticated TCP connections |
+| `ReadTimeout` | ≥ `KeepaliveInterval` + `KeepaliveTimeout` | Per-frame network read deadline; must not be shorter than the keepalive liveness window |
+| `WriteTimeout` | 5–30 s | Per-frame network write deadline |
+| `IdleTimeout` | 5–15 min | Close connections with no inbound activity |
+| `KeepaliveInterval` | 30–60 s | How often an encrypted Ping is sent |
+| `KeepaliveTimeout` | 10–30 s | How long an unanswered Ping is tolerated before closing |
+
+`NewServer` rejects configurations where `ReadTimeout` is shorter than the
+effective keepalive liveness window (`KeepaliveInterval` + `KeepaliveTimeout`).
+Set `ReadTimeout` to zero to rely solely on `IdleTimeout` and keepalive
+liveness as the authoritative deadlines.
+
+Production services should persist and protect the static key, set explicit
+timeouts, and use `ServerConfig.Admission` for application-level authorization
+after the Noise handshake.
