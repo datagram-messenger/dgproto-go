@@ -15,7 +15,7 @@
 //
 // Send reports bounded-queue acceptance. SendAndWait waits for the local writer
 // result; neither operation guarantees peer receipt or application
-// acknowledgement. The first observed terminal cause is retained. Abort is
-// immediate, server shutdown uses Close or immediate Abort, and padding policy belongs to
-// the application.
+// acknowledgement. The first observed terminal cause is retained. Abort
+// terminates immediately; server shutdown uses Close for graceful teardown or
+// Abort for immediate teardown. Padding policy is an application responsibility.
 package dgproto
