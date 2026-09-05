@@ -43,7 +43,7 @@ type ServerConfig struct {
 	// StaticKey is the server's long-term Noise static key pair.
 	StaticKey StaticKey
 
-	// AllowedClients is an optional whitelist of 32-byte client static public keys.
+	// AllowedClients is an optional allowlist of 32-byte client static public keys.
 	// If empty, any client presenting a valid Noise handshake is permitted.
 	AllowedClients [][]byte
 
