@@ -60,7 +60,8 @@ func staticKeyFromPair(pair noise.DHKey) (StaticKey, error) {
 	return key, nil
 }
 
-// Public returns an owned copy of the static public key.
+// Public returns an owned copy of the 32-byte X25519 static public key.
+// The returned slice is independent of the StaticKey and may be shared freely.
 func (k StaticKey) Public() []byte { return append([]byte(nil), k.public[:]...) }
 
 func (k StaticKey) validate() error {
