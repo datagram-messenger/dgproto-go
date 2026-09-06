@@ -228,6 +228,16 @@ func TestSessionOwnership(t *testing.T) {
 	}
 }
 
+func TestSessionSendPayloadRejectsHandshakeTypes(t *testing.T) {
+	client, _ := testSessions(t)
+	for _, mt := range []MessageType{MessageTypeHandshakeInit, MessageTypeHandshakeResponse} {
+		_, err := client.SendPayload(mt, nil, 0)
+		if !errors.Is(err, ErrMessageType) {
+			t.Errorf("SendPayload(0x%02x): error = %v, want %v", mt, err, ErrMessageType)
+		}
+	}
+}
+
 func TestSessionRejectsZeroID(t *testing.T) {
 	if _, err := NewSession(CipherChaCha20Poly1305, HandshakeSecrets{}); !errors.Is(err, ErrInvalidSessionID) {
 		t.Fatalf("error = %v", err)
