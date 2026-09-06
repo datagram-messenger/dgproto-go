@@ -8,7 +8,7 @@ This document describes the Go implementation. The [protocol specification](../p
 - `crypto.go`: ChaCha20-Poly1305, nonce formation, and authenticated encryption.
 - `handshake.go`: Noise XX handshake state and key derivation.
 - `session.go`, `rekey.go`, `replay.go`: epochs, directional keys, rekey transitions, and replay windows.
-- `transport.go`, `tcp.go`: frame transport and TCP framing.
+- `transport.go`, `tcp.go`: frame transport and TCP framing (no outer length prefix; body length is derived from the fixed header).
 - `connection.go`: reader, writer, handler, queues, and lifecycle.
 - `server.go`: listener, limits, admission, and shutdown.
 
