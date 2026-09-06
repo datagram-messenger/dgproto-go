@@ -7,6 +7,23 @@ import (
 	"time"
 )
 
+func TestDeriveNextKeysInvalidKeySize(t *testing.T) {
+	for _, size := range []int{0, 1, 16, 31, 33, 64} {
+		_, _, err := DeriveNextKeys(make([]byte, size))
+		if !errors.Is(err, ErrInvalidKeySize) {
+			t.Errorf("DeriveNextKeys(%d bytes): error = %v, want %v", size, err, ErrInvalidKeySize)
+		}
+	}
+	// Valid size must succeed.
+	send, receive, err := DeriveNextKeys(make([]byte, KeySize))
+	if err != nil {
+		t.Fatalf("DeriveNextKeys(valid): %v", err)
+	}
+	if len(send) != KeySize || len(receive) != KeySize {
+		t.Fatalf("DeriveNextKeys returned wrong lengths: send=%d receive=%d", len(send), len(receive))
+	}
+}
+
 func receiveRekey(t *testing.T, receiver *Session, frame Frame) {
 	t.Helper()
 	message, err := receiver.Receive(frame)
