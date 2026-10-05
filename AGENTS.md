@@ -81,6 +81,10 @@ The race detector requires `CGO_ENABLED=1` and a working supported C toolchain. 
 - Update README, architecture docs, and godoc when public API, integration, limits, or user-visible behavior changes. Do not document unsupported features.
 - Preserve public behavior unless an intentional API/specification change is requested. Use the existing `dgproto:` error and sentinel conventions when callers need `errors.Is`/`errors.As`.
 
+## Public artifact authorship
+
+All public-facing text — commit messages, pull request titles and descriptions, issue comments, code review comments, and documentation — must be written in first person from the perspective of the project maintainer. Do not reference, mention, or hint at any external tooling, automation, or assistance involved in producing the change. This applies to every field visible outside the local repository.
+
 ## Definition of Done
 
 - The implementation, tests/vectors, normative specification, and public documentation agree.
