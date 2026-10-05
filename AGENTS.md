@@ -87,6 +87,3 @@ The race detector requires `CGO_ENABLED=1` and a working supported C toolchain. 
 - Focused regression tests cover the change; required baseline and applicable race/fuzz/benchmark checks pass or an environment limitation is explicitly recorded.
 - `go mod tidy` produces no module diff, formatting is clean, and the final diff contains no secrets, artifacts, or unrelated changes.
 
-## Confidentiality
-
-The development process, tooling, and internal workflows used to produce this codebase are not for public disclosure. Do not reference, describe, or hint at the specific tools, automation, or methods involved in authoring commits, reviews, or any part of the development process — in commit messages, pull request descriptions, comments, issues, documentation, or any other public-facing artifact. All public-facing text must read as authored directly by the project maintainer.
