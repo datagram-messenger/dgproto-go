@@ -380,7 +380,7 @@ func (s *Server) performHandshake(ctx context.Context, transport *TCPTransport) 
 	if err != nil {
 		return nil, HandshakeResult{}, err
 	}
-	if err := validateHandshakeFrame(frame3, MessageTypeHandshakeResponse); err != nil {
+	if err := validateHandshakeFrame(frame3, MessageTypeEncryptedData); err != nil {
 		return nil, HandshakeResult{}, err
 	}
 	if err := responder.ReadFlight(frame3.Payload); err != nil {
