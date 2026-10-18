@@ -83,6 +83,7 @@ func NewSession(suite CipherSuite, secrets HandshakeSecrets) (*Session, error) {
 		return nil, err
 	}
 	now := time.Now
+	keylogWrite(secrets.SessionID, secrets.SendKey, secrets.ReceiveKey)
 	return &Session{
 		sessionID:       secrets.SessionID,
 		suite:           suite,
