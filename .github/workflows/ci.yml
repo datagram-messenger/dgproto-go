@@ -84,6 +84,23 @@ jobs:
       - name: Test
         run: go test -count=1 ./...
 
+  macos:
+    name: Tests (macOS)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: 1.25.x
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Test
+        run: go test -count=1 ./...
+
   vulnerability:
     name: Vulnerability scan
     runs-on: ubuntu-latest
@@ -99,7 +116,7 @@ jobs:
           cache-dependency-path: go.sum
 
       - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
 
       - name: Run govulncheck
         run: govulncheck ./...

@@ -9,7 +9,7 @@ on:
       tag:
         description: Existing stable SemVer tag to validate and optionally publish
         required: true
-        default: v0.2.2
+        default: v0.3.0
         type: string
       publish:
         description: Publish the GitHub Release after validation
@@ -84,7 +84,7 @@ jobs:
           git diff --exit-code -- go.mod go.sum
 
       - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
 
       - name: Run govulncheck
         run: govulncheck ./...
