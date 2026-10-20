@@ -1,10 +1,12 @@
-# AGENTS.md
+# Repository Guide for Coding Agents
 
-## Scope and project
+Welcome to `dgproto-go`. This document gives coding agents and contributors the project-specific context needed to make safe, reviewable changes. It applies to the entire repository unless a more specific `AGENTS.md` exists in a subdirectory.
 
-These instructions apply to the whole repository unless a deeper `AGENTS.md` overrides them. This is the Go 1.25+ implementation of the strict DGProto v1 MVP wire protocol and secure session runtime, not the application server.
+## Project overview
 
-For wire-visible behavior, `docs/protocol/dgproto-v1.md` is normative. The specification is draft and versioned independently from the Go module. Consult `README.md` and `CONTRIBUTING.md` for public usage and general contribution details rather than repeating them here.
+`dgproto-go` is the Go 1.25+ implementation of the strict DGProto v1 MVP wire protocol and secure session runtime. It is a protocol library, not the application server.
+
+Start with [`README.md`](README.md) for capabilities and usage. For wire-visible behavior, [`docs/protocol/dgproto-v1.md`](docs/protocol/dgproto-v1.md) is normative. Read [`SECURITY.md`](SECURITY.md) before reporting or handling a suspected vulnerability.
 
 ## Repository map
 
@@ -81,13 +83,15 @@ The race detector requires `CGO_ENABLED=1` and a working supported C toolchain. 
 - Update README, architecture docs, and godoc when public API, integration, limits, or user-visible behavior changes. Do not document unsupported features.
 - Preserve public behavior unless an intentional API/specification change is requested. Use the existing `dgproto:` error and sentinel conventions when callers need `errors.Is`/`errors.As`.
 
-## Public artifact authorship
+## Contribution quality
 
-All public-facing text — commit messages, pull request titles and descriptions, issue comments, code review comments, and documentation — must be written in first person from the perspective of the project maintainer. Do not reference, mention, or hint at any external tooling, automation, or assistance involved in producing the change. This applies to every field visible outside the local repository.
+- Keep changes focused and use clear, conventional commit messages.
+- Explain compatibility or security implications in the pull request when a change affects protocol behavior, cryptography, exported APIs, or concurrency guarantees.
+- Keep public documentation factual and user-focused. Do not include local paths, credentials, private planning notes, generated transcripts, or tool-specific session details.
+- Follow the repository's review and contribution process. Do not bypass required checks or publish changes unless the contributor has explicitly requested it and has the necessary access.
 
-## Definition of Done
+## Definition of done
 
-- The implementation, tests/vectors, normative specification, and public documentation agree.
-- Focused regression tests cover the change; required baseline and applicable race/fuzz/benchmark checks pass or an environment limitation is explicitly recorded.
+- Implementation, tests or vectors, normative specification, and public documentation agree.
+- Focused regression tests cover the change; required baseline and applicable race, fuzz, or benchmark checks pass, or any environment limitation is clearly reported.
 - `go mod tidy` produces no module diff, formatting is clean, and the final diff contains no secrets, artifacts, or unrelated changes.
-
