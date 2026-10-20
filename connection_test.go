@@ -149,10 +149,12 @@ func TestConnectionPingPong(t *testing.T) {
 
 func TestConnectionRekeyContinues(t *testing.T) {
 	received := make(chan *EncryptedData, 2)
+	unexpected := make(chan any, 1)
 	connection, peerSession, peerTransport, cleanup := testConnectionPair(t, ConnectionConfig{
 		Handler: func(_ context.Context, _ *Connection, message any) error {
 			data, ok := message.(*EncryptedData)
 			if !ok {
+				unexpected <- message
 				return nil
 			}
 			received <- data
@@ -180,6 +182,11 @@ func TestConnectionRekeyContinues(t *testing.T) {
 		case <-time.After(connectionTestTimeout):
 			t.Fatal("connection stopped dispatching after rekey")
 		}
+	}
+	select {
+	case message := <-unexpected:
+		t.Fatalf("internal message dispatched to handler: %T", message)
+	default:
 	}
 	select {
 	case <-connection.Done():

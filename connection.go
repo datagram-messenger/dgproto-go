@@ -334,6 +334,8 @@ func (c *Connection) readLoop() {
 				c.shutdown(err)
 				return
 			}
+		case *RekeyInit:
+			dispatch = false
 		case *SessionClose:
 			c.shutdown(ErrConnectionClosed)
 			return
