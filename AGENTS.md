@@ -6,16 +6,35 @@ Welcome to `dgproto-go`. This document gives coding agents and contributors the 
 
 `dgproto-go` is the Go 1.25+ implementation of the strict DGProto v1 MVP wire protocol and secure session runtime. It is a protocol library, not the application server.
 
-Start with [`README.md`](README.md) for capabilities and usage. For wire-visible behavior, [`docs/protocol/dgproto-v1.md`](docs/protocol/dgproto-v1.md) is normative. Read [`SECURITY.md`](SECURITY.md) before reporting or handling a suspected vulnerability.
+Start with [`README.md`](README.md) for capabilities and usage, and follow [`.github/CONTRIBUTING.md`](.github/CONTRIBUTING.md) for the contribution and pull request workflow. For wire-visible behavior, [`docs/protocol/dgproto-v1.md`](docs/protocol/dgproto-v1.md) is normative. Read [`SECURITY.md`](SECURITY.md) before reporting or handling a suspected vulnerability.
+
+## Sources of truth
+
+Use the narrowest authoritative source for each decision:
+
+1. `docs/protocol/dgproto-v1.md` defines wire format, cryptographic derivations, state transitions, limits, and interoperability requirements.
+2. Exported Go documentation and existing public behavior define the library API contract.
+3. `testdata/vectors/` and `wire_vectors_test.go` define deterministic interoperability fixtures; the vectors are immutable unless an intentional protocol revision requires coordinated replacement.
+4. `.github/workflows/ci.yml` and `.github/workflows/release.yml` define automated validation and release policy.
+5. `.github/CONTRIBUTING.md` defines the contributor and pull request workflow.
+
+When code, tests, documentation, and the specification disagree, do not silently choose one. Identify the conflict and make the smallest coordinated correction.
 
 ## Repository map
 
-- `header.go`, `frame.go`, `tlv.go`, `messages.go`: wire encoding and parsing.
-- `crypto.go`, `handshake.go`, `session.go`, `replay.go`, `rekey.go`: cryptographic and session state.
-- `tcp.go`, `connection.go`, `server.go`: transport and concurrent lifecycle.
-- `testdata/vectors/`, `wire_vectors_test.go`: strict interoperability vectors.
-- `parser_fuzz_test.go`: parser and transport fuzz targets.
-- `.github/workflows/ci.yml`: CI matrix and exact baseline checks.
+- `header.go`, `frame.go`: fixed-header and complete-frame encoding, parsing, validation, and size limits.
+- `tlv.go`, `messages.go`: canonical TLV and typed message codecs.
+- `crypto.go`, `handshake.go`: AEAD framing and the three-flight Noise XX handshake.
+- `session.go`, `replay.go`, `rekey.go`: authenticated session state, replay protection, epochs, and rekey transitions.
+- `transport.go`, `tcp.go`: framed transport contracts and TCP implementation.
+- `connection.go`, `server.go`: concurrent connection runtime, dispatch, admission, shutdown, and server limits.
+- `keylog.go`: opt-in local traffic-key logging controlled by `DGPROTO_KEYLOG`; never enable it in production or expose its output.
+- `conformance_test.go`, `mvp_constraints_test.go`: normative protocol and MVP guardrails.
+- `testdata/vectors/`, `wire_vectors_test.go`: deterministic cross-implementation fixtures and round-trip checks.
+- `parser_fuzz_test.go`: fuzz targets for headers, frames, TLVs, messages, and TCP framing.
+- `benchmark_test.go`: wire-size and codec performance benchmarks.
+- `docs/`: architecture, usage guidance, and the normative protocol specification.
+- `.github/workflows/`: CI and maintainer-only release automation.
 
 ## Non-negotiable protocol and security invariants
 
@@ -37,18 +56,30 @@ Treat framing, parsing, authentication, replay, rekey, and lifecycle changes as 
 
 Report vulnerabilities privately as described in `SECURITY.md`; never disclose suspected vulnerabilities in public issues or pull requests.
 
+## Go and API conventions
+
+- Target the Go version declared in `go.mod`; keep code `gofmt`-clean and idiomatic.
+- Preserve zero-value and default behavior documented by exported types. Treat changes to exported names, interfaces, errors, defaults, ownership, blocking, and cancellation as API changes.
+- Wrap errors only when callers can still use `errors.Is` or `errors.As`; keep existing `dgproto:` wording and sentinel semantics consistent.
+- Do not panic on peer-controlled input. Return precise errors and preserve parser bounds and ownership guarantees.
+- Keep exported methods concurrency-safe where documented. Do not add unbounded goroutines, queues, retries, or shutdown waits.
+- Do not add dependencies, algorithms, protocol negotiation, generated code, `unsafe`, or pooling without a demonstrated requirement and explicit review.
+- Keep comments focused on contracts, invariants, and non-obvious decisions rather than restating the code.
+
 ## Change workflow
 
-1. Read the relevant specification section, implementation, callers, tests, vectors, and CI before editing.
-2. Classify impact on wire bytes, derivations, state transitions, concurrency, public API, and interoperability.
-3. Make the smallest coherent change; do not change constants, labels, layouts, limits, or error semantics speculatively.
-4. Add focused regression coverage for success, malformed input, boundaries, and invalid state order. For lifecycle code, cover cancellation, queue bounds, shutdown, and terminal errors.
-5. For parser/message changes, update applicable fuzz seeds and vectors. Parser fixes and new message types require valid and invalid vectors; valid vectors must decode and re-encode byte-for-byte.
-6. Review the final diff for secrets, generated artifacts, module drift, unrelated edits, and accidental protocol changes.
+1. Read the relevant specification section, implementation, callers, tests, vectors, API documentation, and CI before editing.
+2. Classify impact on wire bytes, cryptographic derivations, state transitions, concurrency, public API, resource bounds, and interoperability.
+3. Add a focused failing regression test before the fix when correcting a defect.
+4. Make the smallest coherent change; do not alter constants, labels, layouts, limits, defaults, or error semantics speculatively.
+5. Cover success, malformed input, boundaries, and invalid state order. For lifecycle code, cover cancellation, queue bounds, shutdown, and the first terminal error.
+6. For parser or message changes, update applicable fuzz seeds and vectors. New or revised wire behavior requires coordinated valid and invalid vectors; valid vectors must decode and re-encode byte-for-byte.
+7. Update specification, package documentation, guides, and examples in the same change whenever their contracts are affected.
+8. Review the final diff for secrets, key logs, generated artifacts, module drift, unrelated edits, and accidental protocol changes.
 
 ## Validation commands
 
-Run from the repository root. Fast loop:
+Run commands from the repository root. During development, format changed Go files and run the narrowest relevant test first. Before submitting any code change, run the baseline:
 
 ```sh
 gofmt -l .
@@ -56,42 +87,53 @@ go test -count=1 ./...
 go vet ./...
 ```
 
-`gofmt -l .` must print nothing. Full CI-equivalent validation:
+`gofmt -l .` must produce no output. Match CI more closely with:
 
 ```sh
-go test -count=1 ./...
-go vet ./...
-gofmt -l .
 go mod tidy
 git diff --exit-code -- go.mod go.sum
 go test -race -count=1 ./...
+govulncheck ./...
 ```
 
-The race detector requires `CGO_ENABLED=1` and a working supported C toolchain. If unavailable, record the reason instead of claiming the race suite passed. CI also runs ordinary tests on Windows and `govulncheck ./...`.
+The race detector requires `CGO_ENABLED=1` and a supported C toolchain. If a required tool or platform is unavailable, state exactly what was not run; never claim a check passed when it was skipped. CI runs ordinary tests on Linux, Windows, and macOS, plus Linux race and vulnerability jobs.
 
 ## Testing guidance
 
-- Run focused tests while developing; use `go test -run TestJSONWireVectors ./...` for vector changes.
-- For parser/wire changes, run applicable targets from `parser_fuzz_test.go`, for example `go test -fuzz=FuzzFrameUnmarshalBinary -fuzztime=60s`. Preserve useful findings under `testdata/fuzz/`.
-- For concurrency, session, rekey, connection, server, or transport changes, run the race suite when supported.
-- For performance-sensitive changes, run `go test -bench=. -benchmem -benchtime=5s ./...` and add a representative benchmark when needed.
-- Never weaken authentication, replay, limits, constant-time checks, race coverage, or vectors merely to make tests pass.
+- Use same-package tests (`package dgproto`) when coverage requires internal state; otherwise test observable behavior through exported APIs.
+- Run `go test -run TestJSONWireVectors -count=1` for vector changes and preserve byte-for-byte decode/re-encode checks.
+- For parser or framing changes, run the applicable target in `parser_fuzz_test.go`, for example `go test -run=^$ -fuzz=FuzzFrameUnmarshalBinary -fuzztime=60s`. Keep useful minimized findings as Go fuzz corpus entries under `testdata/fuzz/` when appropriate.
+- For session, replay, rekey, connection, server, or transport changes, test concurrency, cancellation, queue saturation, partial I/O, and shutdown, then run the race suite when supported.
+- For performance-sensitive changes, run `go test -bench=. -benchmem -benchtime=5s` and add or update a representative benchmark when behavior warrants it.
+- Tests must be deterministic and bounded. Avoid sleeps when synchronization can observe the intended state.
+- Never weaken authentication, replay checks, limits, constant-time comparisons, race coverage, or vectors merely to make a test pass.
 
-## Documentation and compatibility
+## Documentation, compatibility, and releases
 
-- Any change to wire bytes, message types, or cryptographic derivations must update `docs/protocol/dgproto-v1.md` in the same change and receive compatibility/security review. Backward-incompatible draft changes require a new version section or specification document.
-- Update README, architecture docs, and godoc when public API, integration, limits, or user-visible behavior changes. Do not document unsupported features.
-- Preserve public behavior unless an intentional API/specification change is requested. Use the existing `dgproto:` error and sentinel conventions when callers need `errors.Is`/`errors.As`.
+- Any change to wire bytes, message types, state transitions, limits, or cryptographic derivations must update `docs/protocol/dgproto-v1.md` in the same change and receive compatibility and security review.
+- The specification is still a draft, but incompatibility must remain explicit. A backward-incompatible protocol change requires a deliberate versioning decision and coordinated specification, vectors, implementation, and documentation updates.
+- Update README, architecture docs, guides, examples, and package documentation when public API, integration steps, defaults, limits, ownership, or user-visible behavior changes. Do not document unsupported features.
+- Preserve public behavior unless an intentional API or specification change is part of the task. Add migration guidance for breaking Go API changes.
+- Do not edit release tags, publish modules, create releases, or modify release credentials as part of ordinary development. `.github/workflows/release.yml` is maintainer-owned release automation.
+
+## Security and repository hygiene
+
+- Never commit credentials, private keys, traffic keys, key-log output, production captures, user data, or private vulnerability details.
+- `DGPROTO_KEYLOG` is for explicit local debugging only. Keep it unset in tests, CI, examples, and production.
+- Report suspected vulnerabilities only through the private process in `SECURITY.md`; do not expose exploit details in issues, pull requests, commits, or fixtures.
+- Do not commit local plans, scratch files, editor output, binaries, coverage files, fuzz executables, or generated transcripts.
+- Do not overwrite or discard unrelated working-tree changes. Stage only files that belong to the requested change.
 
 ## Contribution quality
 
 - Keep changes focused and use clear, conventional commit messages.
-- Explain compatibility or security implications in the pull request when a change affects protocol behavior, cryptography, exported APIs, or concurrency guarantees.
-- Keep public documentation factual and user-focused. Do not include local paths, credentials, private planning notes, generated transcripts, or tool-specific session details.
-- Follow the repository's review and contribution process. Do not bypass required checks or publish changes unless the contributor has explicitly requested it and has the necessary access.
+- In the pull request, describe motivation, behavioral impact, validation, compatibility, and security implications where relevant.
+- Keep public documentation factual, portable, and user-focused. Do not include machine-specific paths or tool-session details.
+- Follow `.github/CONTRIBUTING.md`; do not bypass required checks. Commit or publish only when the task explicitly requests it and the contributor has the necessary access.
 
 ## Definition of done
 
-- Implementation, tests or vectors, normative specification, and public documentation agree.
-- Focused regression tests cover the change; required baseline and applicable race, fuzz, or benchmark checks pass, or any environment limitation is clearly reported.
-- `go mod tidy` produces no module diff, formatting is clean, and the final diff contains no secrets, artifacts, or unrelated changes.
+- Implementation, tests and vectors, normative specification, exported documentation, and user-facing documentation agree.
+- The smallest relevant regression test exists and the baseline passes; applicable race, fuzz, benchmark, platform, and vulnerability checks pass or omissions are reported precisely.
+- `go mod tidy` produces no module diff, `gofmt -l .` produces no output, and `git diff --check` passes.
+- The final diff contains no secrets, key material, artifacts, unrelated edits, accidental public API changes, or unexplained wire changes.

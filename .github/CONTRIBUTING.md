@@ -2,7 +2,7 @@
 
 ## Scope
 
-When present in your checkout, read the repository-local `AGENTS.md` and the normative [DGProto v1 specification](../docs/protocol/dgproto-v1.md). Keep wire changes, implementation, tests, vectors, and documentation synchronized. The canonical repository path is `github.com/datagram-messenger/dgproto-go`.
+Read the repository's [coding agent guide](../AGENTS.md) and the normative [DGProto v1 specification](../docs/protocol/dgproto-v1.md) before making changes. Keep wire changes, implementation, tests, vectors, and documentation synchronized. The canonical repository path is `github.com/datagram-messenger/dgproto-go`.
 
 ## Local baseline
 
