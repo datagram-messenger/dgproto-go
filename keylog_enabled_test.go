@@ -48,6 +48,14 @@ func TestKeyLogRecordsCommittedRekeyEpochs(t *testing.T) {
 		t.Fatal(err)
 	}
 	log := string(contents)
+	// NewSession logs the initial epoch-1 keys.
+	if !strings.Contains(log, " send 1 ") {
+		t.Fatalf("key log missing initial send epoch 1:\n%s", log)
+	}
+	if !strings.Contains(log, " recv 1 ") {
+		t.Fatalf("key log missing initial receive epoch 1:\n%s", log)
+	}
+	// MarkRekeySent and Receive(RekeyInit) log the committed epoch-2 keys.
 	if !strings.Contains(log, " send 2 ") {
 		t.Fatalf("key log missing send epoch 2:\n%s", log)
 	}
