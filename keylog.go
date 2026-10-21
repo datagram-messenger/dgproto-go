@@ -1,3 +1,5 @@
+//go:build dgproto_keylog
+
 package dgproto
 
 import (
