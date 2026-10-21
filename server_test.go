@@ -565,3 +565,53 @@ func TestServerServeRetriesTemporaryAcceptError(t *testing.T) {
 		t.Fatalf("Serve error = %v, want %v after retry", err, permanent)
 	}
 }
+
+// blockingListener blocks Accept until its release channel is closed, then
+// returns a temporary error. Close is a no-op.
+type blockingListener struct {
+	release chan struct{}
+}
+
+func (l *blockingListener) Accept() (net.Conn, error) {
+	<-l.release
+	return nil, temporaryAcceptError{}
+}
+
+func (*blockingListener) Close() error   { return nil }
+func (*blockingListener) Addr() net.Addr { return nil }
+
+func TestServerServeCloseDuringTemporaryBackoff(t *testing.T) {
+	server, err := NewServer(validServerConfig(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The listener blocks Accept until we release it, then returns a temporary
+	// error so Serve enters the backoff sleep. We then call Close() and verify
+	// that Serve returns ErrServerClosed promptly rather than waiting out the
+	// full backoff duration.
+	release := make(chan struct{})
+	listener := &blockingListener{release: release}
+
+	serveDone := make(chan error, 1)
+	go func() { serveDone <- server.Serve(listener) }()
+
+	// Unblock Accept so Serve receives the temporary error and enters backoff.
+	close(release)
+
+	// Close the server while Serve is sleeping in the backoff select.
+	closed := make(chan error, 1)
+	go func() { closed <- server.Close() }()
+
+	select {
+	case err := <-serveDone:
+		if !errors.Is(err, ErrServerClosed) {
+			t.Fatalf("Serve error = %v, want %v", err, ErrServerClosed)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Serve did not return after Close() during temporary-error backoff")
+	}
+	if err := <-closed; err != nil {
+		t.Fatalf("Close error = %v", err)
+	}
+}
