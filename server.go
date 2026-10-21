@@ -84,6 +84,12 @@ type ServerConfig struct {
 	// Handler processes authenticated inbound messages received on active connections.
 	Handler MessageHandler
 
+	// HandlerShutdownTimeout bounds how long Close waits for an in-progress
+	// MessageHandler call to return after the connection context is canceled.
+	// Zero disables the bound (Close may block indefinitely on a stuck handler).
+	// Abort is unaffected and always returns immediately.
+	HandlerShutdownTimeout time.Duration
+
 	// Admission runs after Noise authentication and before the connection starts.
 	// It exposes identity metadata but no traffic secrets.
 	Admission AdmissionHandler
@@ -313,15 +319,16 @@ func (s *Server) handleConn(netConn net.Conn) {
 	defer s.release(s.connSlots)
 
 	connConfig := ConnectionConfig{
-		OutboundQueue:     s.config.OutboundQueue,
-		HandlerQueue:      s.config.HandlerQueue,
-		HandshakeTimeout:  s.config.HandshakeTimeout,
-		ReadTimeout:       s.config.ReadTimeout,
-		WriteTimeout:      s.config.WriteTimeout,
-		IdleTimeout:       s.config.IdleTimeout,
-		KeepaliveInterval: s.config.KeepaliveInterval,
-		KeepaliveTimeout:  s.config.KeepaliveTimeout,
-		Handler:           s.config.Handler,
+		OutboundQueue:          s.config.OutboundQueue,
+		HandlerQueue:           s.config.HandlerQueue,
+		HandshakeTimeout:       s.config.HandshakeTimeout,
+		ReadTimeout:            s.config.ReadTimeout,
+		WriteTimeout:           s.config.WriteTimeout,
+		IdleTimeout:            s.config.IdleTimeout,
+		KeepaliveInterval:      s.config.KeepaliveInterval,
+		KeepaliveTimeout:       s.config.KeepaliveTimeout,
+		Handler:                s.config.Handler,
+		HandlerShutdownTimeout: s.config.HandlerShutdownTimeout,
 	}
 
 	conn := NewConnection(transport, session, connConfig)
