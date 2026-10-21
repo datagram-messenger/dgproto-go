@@ -10,8 +10,12 @@ import (
 )
 
 // keylogOnce guards one-time initialisation of the keylog writer.
+// keylogMu serialises concurrent writes so that lines from different sessions
+// are never interleaved. It is a leaf lock: nothing else is acquired while it
+// is held.
 var (
 	keylogOnce   sync.Once
+	keylogMu     sync.Mutex
 	keylogWriter *os.File
 	keylogActive bool
 )
@@ -42,8 +46,15 @@ func keylogOpen() {
 //
 // keylogWrite is safe for concurrent use.
 func keylogWrite(sessionID [16]byte, sendKey, recvKey [KeySize]byte) {
-	keylogWriteEpoch(sessionID, "send", 1, sendKey)
-	keylogWriteEpoch(sessionID, "recv", 1, recvKey)
+	keylogOnce.Do(keylogOpen)
+	if !keylogActive {
+		return
+	}
+	sid := hex.EncodeToString(sessionID[:])
+	keylogMu.Lock()
+	fmt.Fprintf(keylogWriter, "DGPROTO_SESSION_KEY %s send 1 %s\n", sid, hex.EncodeToString(sendKey[:]))
+	fmt.Fprintf(keylogWriter, "DGPROTO_SESSION_KEY %s recv 1 %s\n", sid, hex.EncodeToString(recvKey[:]))
+	keylogMu.Unlock()
 }
 
 func keylogWriteEpoch(sessionID [16]byte, direction string, epoch uint32, key [KeySize]byte) {
@@ -51,6 +62,8 @@ func keylogWriteEpoch(sessionID [16]byte, direction string, epoch uint32, key [K
 	if !keylogActive {
 		return
 	}
+	keylogMu.Lock()
 	fmt.Fprintf(keylogWriter, "DGPROTO_SESSION_KEY %s %s %d %s\n",
 		hex.EncodeToString(sessionID[:]), direction, epoch, hex.EncodeToString(key[:]))
+	keylogMu.Unlock()
 }

@@ -12,6 +12,7 @@ import (
 func TestKeyLogRecordsCommittedRekeyEpochs(t *testing.T) {
 	path := t.TempDir() + "/keys.log"
 	keylogOnce = sync.Once{}
+	keylogMu = sync.Mutex{}
 	keylogWriter = nil
 	keylogActive = false
 	t.Setenv("DGPROTO_KEYLOG", path)
@@ -20,6 +21,7 @@ func TestKeyLogRecordsCommittedRekeyEpochs(t *testing.T) {
 			_ = keylogWriter.Close()
 		}
 		keylogOnce = sync.Once{}
+		keylogMu = sync.Mutex{}
 		keylogWriter = nil
 		keylogActive = false
 	})
