@@ -41,6 +41,10 @@ type ConnectionConfig struct {
 	KeepaliveInterval time.Duration
 	KeepaliveTimeout  time.Duration
 	Handler           MessageHandler
+	// HandlerShutdownTimeout bounds how long the connection waits for an
+	// in-progress handler call to return after the connection context is
+	// canceled. Zero disables the bound.
+	HandlerShutdownTimeout time.Duration
 }
 
 func defaultKeepaliveTimeout(interval time.Duration) (time.Duration, bool) {
@@ -527,11 +531,48 @@ func (c *Connection) handlerLoop() {
 				return
 			default:
 			}
-			if err := c.callHandler(message); err != nil {
+			if err := c.callHandlerBounded(message); err != nil {
 				c.shutdown(err)
 				return
 			}
 		}
+	}
+}
+
+// callHandlerBounded calls the handler and, if HandlerShutdownTimeout is set
+// and the connection context is canceled while the handler is running, waits
+// at most that long for the handler to return. If the deadline expires the
+// handler goroutine is detached — it may still run to completion, but
+// handlerLoop unblocks so the connection waitgroup can finish.
+func (c *Connection) callHandlerBounded(message any) error {
+	timeout := c.config.HandlerShutdownTimeout
+	if timeout <= 0 {
+		// No bound configured: run inline, preserving the original behavior.
+		return c.callHandler(message)
+	}
+
+	// Run the handler in a goroutine so we can race it against the shutdown
+	// deadline without blocking handlerLoop indefinitely.
+	result := make(chan error, 1)
+	go func() { result <- c.callHandler(message) }()
+
+	select {
+	case err := <-result:
+		// Handler finished before any deadline — fast path, no timer needed.
+		return err
+	case <-c.ctx.Done():
+		// Connection is shutting down. Give the handler a bounded window.
+	}
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case err := <-result:
+		return err
+	case <-timer.C:
+		// Handler did not return within the deadline. Detach it; the goroutine
+		// will eventually finish on its own (result channel is buffered).
+		return nil
 	}
 }
 
