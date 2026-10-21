@@ -237,6 +237,24 @@ func TestConnectionOutboundQueueBackpressure(t *testing.T) {
 	}
 }
 
+func TestConnectionControlQueueIndependentOfApplicationBackpressure(t *testing.T) {
+	localConn, peerConn := net.Pipe()
+	defer peerConn.Close()
+	localSession, _ := testSessions(t)
+	connection := NewConnection(NewTCPTransport(localConn), localSession, ConnectionConfig{OutboundQueue: 1})
+	defer connection.Close()
+
+	if err := connection.Send(PingPong{Nonce: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := connection.enqueueControl(PingPong{IsResponse: true, Nonce: 2}, false); err != nil {
+		t.Fatalf("control enqueue with full application queue: %v", err)
+	}
+	if connection.closing.Load() {
+		t.Fatal("control backpressure closed the connection")
+	}
+}
+
 func TestConnectionHandlerFailureContainment(t *testing.T) {
 	handlerErr := errors.New("handler failed")
 	for _, test := range []struct {

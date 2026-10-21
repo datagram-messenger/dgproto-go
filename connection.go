@@ -72,6 +72,7 @@ type Connection struct {
 	ctx          context.Context
 	cancel       context.CancelCauseFunc
 	outbound     chan queuedMessage
+	control      chan queuedMessage
 	closeRequest chan closeRequest
 	activity     chan struct{}
 	pong         chan uint64
@@ -111,6 +112,7 @@ func NewConnection(transport *TCPTransport, session *Session, config ConnectionC
 		ctx:          ctx,
 		cancel:       cancel,
 		outbound:     make(chan queuedMessage, config.OutboundQueue),
+		control:      make(chan queuedMessage, 16),
 		closeRequest: make(chan closeRequest, 1),
 		activity:     make(chan struct{}, 1),
 		pong:         make(chan uint64, 1),
@@ -183,6 +185,14 @@ func (c *Connection) SendAndWait(ctx context.Context, message any) error {
 }
 
 func (c *Connection) enqueue(ctx context.Context, item queuedMessage, wait bool) error {
+	return c.enqueueChannel(ctx, c.outbound, item, wait)
+}
+
+func (c *Connection) enqueueControl(message any, wait bool) error {
+	return c.enqueueChannel(c.ctx, c.control, queuedMessage{message: message}, wait)
+}
+
+func (c *Connection) enqueueChannel(ctx context.Context, queue chan<- queuedMessage, item queuedMessage, wait bool) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -191,7 +201,7 @@ func (c *Connection) enqueue(ctx context.Context, item queuedMessage, wait bool)
 	}
 	if !wait {
 		select {
-		case c.outbound <- item:
+		case queue <- item:
 			return nil
 		default:
 			return ErrOutboundQueueFull
@@ -202,7 +212,7 @@ func (c *Connection) enqueue(ctx context.Context, item queuedMessage, wait bool)
 		return ctx.Err()
 	case <-c.ctx.Done():
 		return ErrConnectionClosed
-	case c.outbound <- item:
+	case queue <- item:
 		return nil
 	}
 }
@@ -330,7 +340,7 @@ func (c *Connection) readLoop() {
 				case c.pong <- m.Nonce:
 				default:
 				}
-			} else if err := c.Send(PingPong{IsResponse: true, Nonce: m.Nonce}); err != nil {
+			} else if err := c.enqueueControl(PingPong{IsResponse: true, Nonce: m.Nonce}, true); err != nil {
 				c.shutdown(err)
 				return
 			}
@@ -373,6 +383,13 @@ func (c *Connection) writeLoop() {
 			request.result <- err
 			c.shutdown(request.cause)
 			return
+		case item := <-c.control:
+			err := c.writeMessage(item)
+			complete(item, err)
+			if err != nil {
+				c.shutdown(err)
+				return
+			}
 		case item := <-c.outbound:
 			err := c.writeMessage(item)
 			complete(item, err)
@@ -397,6 +414,8 @@ func (c *Connection) failPending() {
 	}
 	for {
 		select {
+		case item := <-c.control:
+			complete(item, err)
 		case item := <-c.outbound:
 			complete(item, err)
 		default:
@@ -472,9 +491,10 @@ func (c *Connection) maintenanceLoop() {
 				continue
 			}
 			outstanding = c.pingNonce.Add(1)
-			if err := c.Send(PingPong{Nonce: outstanding}); err != nil {
-				c.shutdown(err)
-				return
+			if err := c.enqueueControl(PingPong{Nonce: outstanding}, false); err != nil {
+				outstanding = 0
+				resetTimer(keepaliveTimer, c.config.KeepaliveInterval)
+				continue
 			}
 			pongTimer = time.NewTimer(c.config.KeepaliveTimeout)
 			pongDeadline = pongTimer.C
