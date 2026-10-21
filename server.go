@@ -196,14 +196,34 @@ func (s *Server) Serve(listener net.Listener) error {
 	s.listener = listener
 	s.mu.Unlock()
 
+	var acceptDelay time.Duration
 	for {
 		netConn, err := listener.Accept()
 		if err != nil {
 			if s.inShutdown.Load() {
 				return ErrServerClosed
 			}
+			if temporary, ok := err.(interface{ Temporary() bool }); ok && temporary.Temporary() {
+				if acceptDelay == 0 {
+					acceptDelay = 5 * time.Millisecond
+				} else {
+					acceptDelay *= 2
+				}
+				acceptDelay = min(acceptDelay, time.Second)
+				timer := time.NewTimer(acceptDelay)
+				select {
+				case <-timer.C:
+					continue
+				case <-s.closed:
+					if !timer.Stop() {
+						<-timer.C
+					}
+					return ErrServerClosed
+				}
+			}
 			return err
 		}
+		acceptDelay = 0
 
 		if !s.tryAcquire(s.handshakes) {
 			_ = netConn.Close()

@@ -533,3 +533,35 @@ func TestServerDisallowedClient(t *testing.T) {
 		t.Fatal("expected connection to be closed by server for unauthorized client")
 	}
 }
+
+type temporaryAcceptError struct{}
+
+func (temporaryAcceptError) Error() string   { return "temporary accept error" }
+func (temporaryAcceptError) Timeout() bool   { return false }
+func (temporaryAcceptError) Temporary() bool { return true }
+
+type scriptedListener struct {
+	errors []error
+}
+
+func (l *scriptedListener) Accept() (net.Conn, error) {
+	err := l.errors[0]
+	l.errors = l.errors[1:]
+	return nil, err
+}
+
+func (*scriptedListener) Close() error   { return nil }
+func (*scriptedListener) Addr() net.Addr { return nil }
+
+func TestServerServeRetriesTemporaryAcceptError(t *testing.T) {
+	server, err := NewServer(validServerConfig(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	permanent := errors.New("permanent accept error")
+	listener := &scriptedListener{errors: []error{temporaryAcceptError{}, permanent}}
+
+	if err := server.Serve(listener); !errors.Is(err, permanent) {
+		t.Fatalf("Serve error = %v, want %v after retry", err, permanent)
+	}
+}
