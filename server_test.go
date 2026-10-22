@@ -534,11 +534,43 @@ func TestServerDisallowedClient(t *testing.T) {
 	}
 }
 
+// temporaryAcceptError is a synthetic transient accept error used in tests.
+// It does not implement the deprecated Temporary() method; isTemporaryAcceptError
+// must recognise it via the net.Error interface (Timeout) or the sentinel flag.
 type temporaryAcceptError struct{}
 
-func (temporaryAcceptError) Error() string   { return "temporary accept error" }
-func (temporaryAcceptError) Timeout() bool   { return false }
-func (temporaryAcceptError) Temporary() bool { return true }
+func (temporaryAcceptError) Error() string     { return "temporary accept error" }
+func (temporaryAcceptError) Timeout() bool     { return false }
+func (temporaryAcceptError) IsTemporary() bool { return true }
+
+// TestIsTemporaryAcceptError verifies the classification function used by Serve.
+func TestIsTemporaryAcceptError(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"nil", nil, false},
+		{"plain error", errors.New("boom"), false},
+		{"temporaryAcceptError", temporaryAcceptError{}, true},
+		{"net timeout", &net.OpError{Op: "accept", Err: &timeoutError{}}, true},
+		{"net non-timeout", &net.OpError{Op: "accept", Err: errors.New("permanent")}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isTemporaryAcceptError(tc.err); got != tc.want {
+				t.Fatalf("isTemporaryAcceptError(%v) = %v, want %v", tc.err, got, tc.want)
+			}
+		})
+	}
+}
+
+// timeoutError is a minimal net.Error that reports Timeout() == true.
+type timeoutError struct{}
+
+func (timeoutError) Error() string   { return "i/o timeout" }
+func (timeoutError) Timeout() bool   { return true }
+func (timeoutError) Temporary() bool { return true }
 
 type scriptedListener struct {
 	errors []error
