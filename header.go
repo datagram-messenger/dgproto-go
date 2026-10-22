@@ -140,7 +140,10 @@ func (h Header) Validate() error {
 }
 
 // ValidateReceive checks invariants required when accepting a peer header.
-// Unknown flag bits are retained and ignored for forward compatibility.
+// Unknown flag bits are retained and not rejected: the spec (§3.2) states
+// "MVP senders MUST leave all reserved bits zero; receivers ignore unknown
+// bits." Silently accepting reserved bits on receive is therefore correct
+// behaviour, not a conformance gap (DGP-031-08, closed not-a-defect).
 func (h Header) ValidateReceive() error { return h.validateCommon() }
 
 func (h Header) marshalBinary(validateSend bool) ([]byte, error) {
