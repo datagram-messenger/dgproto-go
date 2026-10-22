@@ -70,7 +70,15 @@ func (t TLV) MarshalBinary() ([]byte, error) {
 
 // DecodeTLVs decodes exactly one TLV sequence. Protocol-wide size and element
 // limits always apply; a positive maxBytes may impose a tighter caller limit.
-// Unknown types are preserved, padding is ignored, and values are copied.
+// Unknown types are preserved, padding bytes are skipped without inspecting
+// their content, and values are copied.
+//
+// Alignment padding bytes (0–3 bytes after each TLV value, rounding the
+// encoded length up to a 4-byte boundary) are intentionally not zero-checked.
+// The spec (§3.4) states they "MUST be treated as opaque/ignored by parsers
+// (they exist purely for alignment, not for data)." Accepting non-zero padding
+// on decode is therefore correct behaviour, not a conformance gap
+// (DGP-031-09, closed not-a-defect).
 func DecodeTLVs(data []byte, maxBytes int) ([]TLV, error) {
 	if len(data) > MaxTLVSequenceSize {
 		return nil, fmt.Errorf("%w: got %d bytes, limit %d", ErrTLVSequenceLimit, len(data), MaxTLVSequenceSize)
