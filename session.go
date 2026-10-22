@@ -225,6 +225,7 @@ func (s *Session) MarkRekeySent(frame Frame) error {
 	s.sendKey, s.send, s.sendEpoch = pending.key, pending.codec, pending.epoch
 	s.nextSequence, s.sentInEpoch, s.epochStarted = 1, 0, s.now()
 	s.pendingRekey = nil
+	keylogWriteEpoch(s.sessionID, "send", s.sendEpoch, s.sendKey)
 	return nil
 }
 
@@ -361,6 +362,7 @@ func (s *Session) ReceivePayload(frame Frame) ([]byte, error) {
 		s.graceRemaining = s.graceFrames
 		s.graceUntil = s.now().Add(s.gracePeriod)
 		s.expireGraceLocked()
+		keylogWriteEpoch(s.sessionID, "recv", s.receiveEpoch, s.receiveKey)
 		return candidate.plaintext, nil
 	}
 
