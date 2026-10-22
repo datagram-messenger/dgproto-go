@@ -84,6 +84,12 @@ type ServerConfig struct {
 	// Handler processes authenticated inbound messages received on active connections.
 	Handler MessageHandler
 
+	// HandlerShutdownTimeout bounds how long Close waits for an in-progress
+	// MessageHandler call to return after the connection context is canceled.
+	// Zero disables the bound (Close may block indefinitely on a stuck handler).
+	// Abort is unaffected and always returns immediately.
+	HandlerShutdownTimeout time.Duration
+
 	// Admission runs after Noise authentication and before the connection starts.
 	// It exposes identity metadata but no traffic secrets.
 	Admission AdmissionHandler
@@ -196,14 +202,34 @@ func (s *Server) Serve(listener net.Listener) error {
 	s.listener = listener
 	s.mu.Unlock()
 
+	var acceptDelay time.Duration
 	for {
 		netConn, err := listener.Accept()
 		if err != nil {
 			if s.inShutdown.Load() {
 				return ErrServerClosed
 			}
+			if temporary, ok := err.(interface{ Temporary() bool }); ok && temporary.Temporary() {
+				if acceptDelay == 0 {
+					acceptDelay = 5 * time.Millisecond
+				} else {
+					acceptDelay *= 2
+				}
+				acceptDelay = min(acceptDelay, time.Second)
+				timer := time.NewTimer(acceptDelay)
+				select {
+				case <-timer.C:
+					continue
+				case <-s.closed:
+					if !timer.Stop() {
+						<-timer.C
+					}
+					return ErrServerClosed
+				}
+			}
 			return err
 		}
+		acceptDelay = 0
 
 		if !s.tryAcquire(s.handshakes) {
 			_ = netConn.Close()
@@ -293,15 +319,16 @@ func (s *Server) handleConn(netConn net.Conn) {
 	defer s.release(s.connSlots)
 
 	connConfig := ConnectionConfig{
-		OutboundQueue:     s.config.OutboundQueue,
-		HandlerQueue:      s.config.HandlerQueue,
-		HandshakeTimeout:  s.config.HandshakeTimeout,
-		ReadTimeout:       s.config.ReadTimeout,
-		WriteTimeout:      s.config.WriteTimeout,
-		IdleTimeout:       s.config.IdleTimeout,
-		KeepaliveInterval: s.config.KeepaliveInterval,
-		KeepaliveTimeout:  s.config.KeepaliveTimeout,
-		Handler:           s.config.Handler,
+		OutboundQueue:          s.config.OutboundQueue,
+		HandlerQueue:           s.config.HandlerQueue,
+		HandshakeTimeout:       s.config.HandshakeTimeout,
+		ReadTimeout:            s.config.ReadTimeout,
+		WriteTimeout:           s.config.WriteTimeout,
+		IdleTimeout:            s.config.IdleTimeout,
+		KeepaliveInterval:      s.config.KeepaliveInterval,
+		KeepaliveTimeout:       s.config.KeepaliveTimeout,
+		Handler:                s.config.Handler,
+		HandlerShutdownTimeout: s.config.HandlerShutdownTimeout,
 	}
 
 	conn := NewConnection(transport, session, connConfig)

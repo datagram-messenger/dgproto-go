@@ -237,6 +237,24 @@ func TestConnectionOutboundQueueBackpressure(t *testing.T) {
 	}
 }
 
+func TestConnectionControlQueueIndependentOfApplicationBackpressure(t *testing.T) {
+	localConn, peerConn := net.Pipe()
+	defer peerConn.Close()
+	localSession, _ := testSessions(t)
+	connection := NewConnection(NewTCPTransport(localConn), localSession, ConnectionConfig{OutboundQueue: 1})
+	defer connection.Close()
+
+	if err := connection.Send(PingPong{Nonce: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := connection.enqueueControl(PingPong{IsResponse: true, Nonce: 2}, false); err != nil {
+		t.Fatalf("control enqueue with full application queue: %v", err)
+	}
+	if connection.closing.Load() {
+		t.Fatal("control backpressure closed the connection")
+	}
+}
+
 func TestConnectionHandlerFailureContainment(t *testing.T) {
 	handlerErr := errors.New("handler failed")
 	for _, test := range []struct {
@@ -537,6 +555,83 @@ func TestConnectionCloseIdempotent(t *testing.T) {
 	}
 	if err := connection.Send(PingPong{}); !errors.Is(err, ErrConnectionClosed) {
 		t.Fatalf("send error = %v", err)
+	}
+}
+
+func TestConnectionHandlerShutdownTimeoutUnblocksClose(t *testing.T) {
+	// Regression test for DGP-031-05: Close() must not hang indefinitely when
+	// a MessageHandler ignores its context. With HandlerShutdownTimeout set,
+	// the connection waitgroup must complete within the deadline even if the
+	// handler goroutine is still running.
+	handlerStarted := make(chan struct{})
+	handlerReleased := make(chan struct{})
+	connection, peerSession, peerTransport, cleanup := testConnectionPair(t, ConnectionConfig{
+		HandlerShutdownTimeout: 50 * time.Millisecond,
+		Handler: func(_ context.Context, _ *Connection, _ any) error {
+			close(handlerStarted)
+			<-handlerReleased // deliberately ignores ctx — simulates a stuck handler
+			return nil
+		},
+	})
+	defer func() {
+		close(handlerReleased) // unblock the detached goroutine so it can exit
+		cleanup()
+	}()
+	connection.Start(context.Background())
+
+	writeConnectionMessage(t, peerTransport, peerSession, EncryptedData{})
+	select {
+	case <-handlerStarted:
+	case <-time.After(connectionTestTimeout):
+		t.Fatal("handler did not start")
+	}
+
+	// Close the peer transport to trigger connection shutdown while the handler
+	// is still blocked. Done() must close within the shutdown timeout + margin.
+	_ = peerTransport.Close()
+	select {
+	case <-connection.Done():
+	case <-time.After(connectionTestTimeout):
+		t.Fatal("connection did not stop: Close() blocked on stuck handler despite HandlerShutdownTimeout")
+	}
+}
+
+func TestConnectionHandlerShutdownTimeoutZeroPreservesBlockingBehavior(t *testing.T) {
+	// With HandlerShutdownTimeout == 0 (disabled), the connection must wait for
+	// the handler to return — the existing behavior is preserved.
+	handlerStarted := make(chan struct{})
+	handlerReleased := make(chan struct{})
+	connection, peerSession, peerTransport, cleanup := testConnectionPair(t, ConnectionConfig{
+		HandlerShutdownTimeout: 0, // disabled
+		Handler: func(ctx context.Context, _ *Connection, _ any) error {
+			close(handlerStarted)
+			<-ctx.Done() // well-behaved: respects context
+			<-handlerReleased
+			return ctx.Err()
+		},
+	})
+	defer cleanup()
+	connection.Start(context.Background())
+
+	writeConnectionMessage(t, peerTransport, peerSession, EncryptedData{})
+	select {
+	case <-handlerStarted:
+	case <-time.After(connectionTestTimeout):
+		t.Fatal("handler did not start")
+	}
+
+	_ = peerTransport.Close()
+	// Handler is still blocking on handlerReleased; Done() must not fire yet.
+	select {
+	case <-connection.Done():
+		t.Fatal("connection stopped before handler was released")
+	case <-time.After(20 * time.Millisecond):
+	}
+	close(handlerReleased)
+	select {
+	case <-connection.Done():
+	case <-time.After(connectionTestTimeout):
+		t.Fatal("connection did not stop after handler returned")
 	}
 }
 
