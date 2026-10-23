@@ -257,7 +257,7 @@ func (c *Connection) enqueueChannel(ctx context.Context, queue chan<- queuedMess
 // SendPadded queues a message with the requested encrypted-frame padding. It
 // does not wait for network I/O and returns ErrOutboundQueueFull on backpressure.
 func (c *Connection) SendPadded(message any, padLength uint8) error {
-	return c.enqueue(nil, queuedMessage{message: message, padLength: padLength}, false)
+	return c.enqueue(context.TODO(), queuedMessage{message: message, padLength: padLength}, false)
 }
 
 // Close sends a normal SessionClose when the runtime is active, then stops it.
