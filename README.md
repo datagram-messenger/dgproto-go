@@ -91,7 +91,11 @@ See [Getting started](docs/guides/getting-started.md) for the full example with 
 
 - `Connection.Close()` — attempts a close-frame write then stops transport; no peer acknowledgement or outbound queue-drain guarantee.
 - `Server.Close()` — stops networking and waits for server-owned work. Handlers/hooks must cooperate with cancellation.
-- `Server.Abort()` — closes networking without waiting for handlers/hooks; it does not kill callback goroutines.
+- `Server.Abort()` — closes networking, including sockets in admission and runtime handoff, without waiting for handlers/hooks; it does not kill callback goroutines.
+- Termination discards queued outbound/control/handler references and completes pending local-write waits with an error, including connections closed before `Start`. An in-progress writer or handler retains its own message until it exits; this is not delivery or a secure-memory-erasure guarantee.
+- `ServerConfig.HandlerShutdownTimeout` rejects negative values. Zero is an unbounded handler wait; positive values may detach a canceled handler, not kill it. Admission and disconnect hooks must bound their own work.
+- Direct `TCPTransport` calls honor cancellation while waiting for the read/write lane. Interrupted I/O may leave a partial frame; do not assume the stream remains reusable.
+- Direct session callers must transmit the exact emitted `RekeyInit`, then call `MarkRekeySent` before retrying their message. Mutation of emitted ciphertext or padding is rejected against an independent snapshot.
 
 The first observed terminal cause is always retained. Later operations observe that result.
 
@@ -131,6 +135,7 @@ DGProto v1 uses `Noise_XX_25519_ChaChaPoly_SHA256` for the handshake and ChaCha2
 | [Protocol specification](docs/protocol/dgproto-v1.md) | Normative wire format and protocol requirements |
 | [Test vectors](testdata/vectors/README.md) | Interoperability fixture scope and validation levels |
 | [Contributing](.github/CONTRIBUTING.md) | Contribution workflow and requirements |
+| [0.6.0 hardening](docs/0.6.0-candidate.md) | Release scope, local validation, and remaining gates |
 
 ## License
 
