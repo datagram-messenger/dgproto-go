@@ -93,7 +93,11 @@ Noise XX authenticates the peer's static key — it does not grant application p
 
 **Production timeouts**
 
-All timeout fields default to zero (disabled). For internet-facing deployments:
+`NewServer` uses a 10-second `HandshakeTimeout` when the configured value is zero;
+zero does not disable the handshake deadline. `ReadTimeout`, `WriteTimeout`,
+`IdleTimeout`, and `KeepaliveInterval` remain zero (disabled) by default. When
+keepalive is enabled with a zero `KeepaliveTimeout`, its effective timeout is
+twice `KeepaliveInterval`. For internet-facing deployments:
 
 | Field | Suggested value | Purpose |
 |-------|----------------|---------|
