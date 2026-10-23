@@ -155,7 +155,7 @@ type pendingSendRekey struct {
 // RekeyInit. A direct caller MUST transmit it, call MarkRekeySent, and retry the
 // original message. Until then all sends fail with ErrRekeyPending, so no
 // new-epoch application frame can overtake RekeyInit. Connection does this
-// automatically.
+// automatically. Nil message pointers are rejected with ErrMessageType.
 func (s *Session) Send(message any, padLength uint8) (Frame, error) {
 	if s == nil {
 		return Frame{}, ErrSessionClosed
@@ -471,16 +471,41 @@ func validSessionMessageType(messageType MessageType) bool {
 
 func outboundMessage(message any) (MessageType, encoding.BinaryMarshaler, error) {
 	var messageType MessageType
-	switch message.(type) {
-	case EncryptedData, *EncryptedData:
+	switch m := message.(type) {
+	case EncryptedData:
 		messageType = MessageTypeEncryptedData
-	case PingPong, *PingPong:
+	case *EncryptedData:
+		if m == nil {
+			return 0, nil, ErrMessageType
+		}
+		messageType = MessageTypeEncryptedData
+	case PingPong:
 		messageType = MessageTypePingPong
-	case SessionClose, *SessionClose:
+	case *PingPong:
+		if m == nil {
+			return 0, nil, ErrMessageType
+		}
+		messageType = MessageTypePingPong
+	case SessionClose:
 		messageType = MessageTypeSessionClose
-	case Ack, *Ack:
+	case *SessionClose:
+		if m == nil {
+			return 0, nil, ErrMessageType
+		}
+		messageType = MessageTypeSessionClose
+	case Ack:
 		messageType = MessageTypeAck
-	case ErrorMessage, *ErrorMessage:
+	case *Ack:
+		if m == nil {
+			return 0, nil, ErrMessageType
+		}
+		messageType = MessageTypeAck
+	case ErrorMessage:
+		messageType = MessageTypeError
+	case *ErrorMessage:
+		if m == nil {
+			return 0, nil, ErrMessageType
+		}
 		messageType = MessageTypeError
 	default:
 		return 0, nil, fmt.Errorf("%w: %T", ErrMessageType, message)

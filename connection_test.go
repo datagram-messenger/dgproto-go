@@ -511,7 +511,8 @@ func TestConnectionClosePrefersBufferedWriteResultOverCancellation(t *testing.T)
 		connection := NewConnection(NewTCPTransport(localConn), localSession, ConnectionConfig{
 			WriteTimeout: connectionTestTimeout,
 		})
-		connection.started.Store(true)
+		// Model Start's ownership without launching the real transport loops.
+		connection.startOnce.Do(func() { connection.started.Store(true) })
 
 		closed := make(chan error, 1)
 		go func() {

@@ -62,7 +62,11 @@ All three methods return an error; callers should handle it.
 
 ## Production timeout guidance
 
-All timeout fields default to zero, which disables the corresponding deadline.
+`NewServer` uses a 10-second `HandshakeTimeout` when the configured value is zero;
+zero does not disable the handshake deadline. `ReadTimeout`, `WriteTimeout`,
+`IdleTimeout`, and `KeepaliveInterval` remain zero (disabled) by default. When
+keepalive is enabled with a zero `KeepaliveTimeout`, its effective timeout is
+twice `KeepaliveInterval`.
 For internet-facing deployments, set explicit values to bound resource usage:
 
 | Field | Recommended starting point | Purpose |

@@ -126,6 +126,7 @@ func NewConnection(transport *TCPTransport, session *Session, config ConnectionC
 }
 
 // Start begins the connection runtime until ctx or the connection ends.
+// It has no effect after Close.
 func (c *Connection) Start(ctx context.Context) {
 	c.startOnce.Do(func() {
 		c.started.Store(true)
@@ -200,6 +201,10 @@ func (c *Connection) enqueueChannel(ctx context.Context, queue chan<- queuedMess
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	// A ready queue must not win over cancellation that predates this call.
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if c.closing.Load() {
 		return ErrConnectionClosed
 	}
@@ -260,8 +265,13 @@ func (c *Connection) closeGracefully(message SessionClose, cause error) error {
 	var result error
 	c.closeOnce.Do(func() {
 		c.closing.Store(true)
-		if !c.started.Load() {
+		// Claim the unstarted runtime, or wait for concurrent Start to finish
+		// installing its loops. Only the owner of startOnce closes done.
+		c.startOnce.Do(func() {
 			c.shutdown(cause)
+			close(c.done)
+		})
+		if !c.started.Load() {
 			return
 		}
 		request := closeRequest{message: message, cause: cause, result: make(chan error, 1)}
