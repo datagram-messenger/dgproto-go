@@ -208,7 +208,9 @@ func (s *Session) sendPayload(messageType MessageType, plaintext []byte, padLeng
 
 // MarkRekeySent commits the pending send-key transition after frame has been
 // successfully transmitted. It rejects any frame other than the exact pending
-// RekeyInit and is safe for concurrent use.
+// RekeyInit and is safe for concurrent use. The pending bytes are an owned
+// snapshot: mutating returned Payload or Padding cannot change the pending
+// transition. Callers must still not mutate frame buffers during transmission.
 func (s *Session) MarkRekeySent(frame Frame) error {
 	if s == nil {
 		return ErrSessionClosed
@@ -281,8 +283,12 @@ func (s *Session) startRekeyLocked(padLength uint8) (Frame, error) {
 	if err != nil {
 		return Frame{}, err
 	}
+	// Keep the exact emitted bytes independently of the caller-owned frame.
+	pendingFrame := frame
+	pendingFrame.Payload = append([]byte(nil), frame.Payload...)
+	pendingFrame.Padding = append([]byte(nil), frame.Padding...)
 	s.pendingRekey = &pendingSendRekey{
-		frame: frame,
+		frame: pendingFrame,
 		key:   nextKey,
 		codec: nextCodec,
 		epoch: nextEpoch,

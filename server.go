@@ -88,7 +88,8 @@ type ServerConfig struct {
 	// HandlerShutdownTimeout bounds how long Close waits for an in-progress
 	// MessageHandler call to return after the connection context is canceled.
 	// Zero disables the bound (Close may block indefinitely on a stuck handler).
-	// Abort is unaffected and always returns immediately.
+	// Positive values detach a stuck handler, not kill it. NewServer rejects
+	// negative values. Abort does not wait for handlers.
 	HandlerShutdownTimeout time.Duration
 
 	// Admission runs after Noise authentication and before the connection starts.
@@ -130,6 +131,9 @@ func NewServer(config ServerConfig) (*Server, error) {
 	}
 	if config.ReadTimeout < 0 || config.WriteTimeout < 0 || config.IdleTimeout < 0 || config.KeepaliveInterval < 0 {
 		return nil, errors.New("dgproto: connection timeouts must not be negative")
+	}
+	if config.HandlerShutdownTimeout < 0 {
+		return nil, errors.New("dgproto: HandlerShutdownTimeout must not be negative")
 	}
 	if config.KeepaliveTimeout < 0 {
 		return nil, errors.New("dgproto: KeepaliveTimeout must not be negative")
@@ -242,9 +246,10 @@ func (s *Server) Serve(listener net.Listener) error {
 			continue
 		}
 
-		s.wg.Go(func() {
+		go func() {
+			defer s.wg.Done()
 			s.handleConn(netConn)
-		})
+		}()
 	}
 }
 
@@ -285,11 +290,11 @@ func (s *Server) Abort() error {
 }
 
 func (s *Server) beginShutdown() (net.Listener, []*Connection, []net.Conn) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if !s.inShutdown.Swap(true) {
 		close(s.closed)
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	conns := make([]*Connection, 0, len(s.conns))
 	for conn := range s.conns {
 		conns = append(conns, conn)
@@ -303,11 +308,13 @@ func (s *Server) beginShutdown() (net.Listener, []*Connection, []net.Conn) {
 
 func (s *Server) handleConn(netConn net.Conn) {
 	transport := NewTCPTransport(netConn)
+	// Retain socket ownership through admission and until atomic handoff.
+	defer s.unregisterHandshake(netConn)
+	defer transport.Close()
 
 	ctx, cancel := context.WithTimeout(context.Background(), s.config.HandshakeTimeout)
 	session, result, err := s.performHandshake(ctx, transport)
 	cancel()
-	s.unregisterHandshake(netConn)
 	s.release(s.handshakes)
 	if err != nil {
 		_ = transport.Close()
@@ -484,6 +491,8 @@ func (s *Server) registerHandshake(conn net.Conn) bool {
 		return false
 	}
 	s.handshakeConns[conn] = struct{}{}
+	// Reserve the worker before shutdown can acquire mu and begin Wait.
+	s.wg.Add(1)
 	return true
 }
 
@@ -500,6 +509,8 @@ func (s *Server) registerConn(conn *Connection) bool {
 		return false
 	}
 	s.conns[conn] = struct{}{}
+	// The runtime replaces the socket entry under the same shutdown lock.
+	delete(s.handshakeConns, conn.transport.conn)
 	return true
 }
 

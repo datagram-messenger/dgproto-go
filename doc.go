@@ -10,8 +10,9 @@
 // ServerConfig supports authenticated-key filtering with AllowedClients,
 // application authorization with Admission, and termination observation with
 // OnDisconnect. HandlerShutdownTimeout bounds the time Close waits for a
-// stuck MessageHandler to return; zero preserves the previous unbounded
-// behavior. Zero-valued server settings select a 10-second handshake
+// canceled MessageHandler to return; a positive bound detaches, not kills,
+// a stuck handler. Zero preserves unbounded waiting; NewServer rejects negative
+// values. Zero-valued server settings select a 10-second handshake
 // timeout, queue capacities of 16, 64 concurrent handshakes, and 1024
 // established connections.
 //

@@ -88,12 +88,15 @@ type Connection struct {
 	startOnce    sync.Once
 	shutdownOnce sync.Once
 	closeOnce    sync.Once
-	causeMu      sync.Mutex
-	terminal     error
-	started      atomic.Bool
-	closing      atomic.Bool
-	pingNonce    atomic.Uint64
-	wg           sync.WaitGroup
+	// Producers hold a read lease through enqueue. Shutdown cancels capacity
+	// waiters before taking the exclusive lease to dispose terminal queues.
+	queueMu   sync.RWMutex
+	causeMu   sync.Mutex
+	terminal  error
+	started   atomic.Bool
+	closing   atomic.Bool
+	pingNonce atomic.Uint64
+	wg        sync.WaitGroup
 }
 
 // NewConnection constructs a stopped established-session runtime.
@@ -224,6 +227,8 @@ func (c *Connection) enqueueChannel(ctx context.Context, queue chan<- queuedMess
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	c.queueMu.RLock()
+	defer c.queueMu.RUnlock()
 	// A ready queue must not win over cancellation that predates this call.
 	if err := ctx.Err(); err != nil {
 		return err
@@ -252,20 +257,7 @@ func (c *Connection) enqueueChannel(ctx context.Context, queue chan<- queuedMess
 // SendPadded queues a message with the requested encrypted-frame padding. It
 // does not wait for network I/O and returns ErrOutboundQueueFull on backpressure.
 func (c *Connection) SendPadded(message any, padLength uint8) error {
-	if c.closing.Load() {
-		return ErrConnectionClosed
-	}
-	select {
-	case <-c.ctx.Done():
-		return ErrConnectionClosed
-	default:
-	}
-	select {
-	case c.outbound <- queuedMessage{message: message, padLength: padLength}:
-		return nil
-	default:
-		return ErrOutboundQueueFull
-	}
+	return c.enqueue(nil, queuedMessage{message: message, padLength: padLength}, false)
 }
 
 // Close sends a normal SessionClose when the runtime is active, then stops it.
@@ -273,7 +265,8 @@ func (c *Connection) Close() error {
 	return c.closeGracefully(SessionClose{Code: 0, Reason: "local shutdown"}, ErrConnectionClosed)
 }
 
-// Done closes after all runtime loops exit.
+// Done closes after all runtime loops exit and terminal queues are disposed.
+// A detached handler may still retain its in-progress message.
 func (c *Connection) Done() <-chan struct{} { return c.done }
 
 // Err returns the first terminal cause, or nil while running. Once recorded,
@@ -304,8 +297,15 @@ func (c *Connection) closeGracefully(message SessionClose, cause error) error {
 		}
 		timer := time.NewTimer(gracePeriod)
 		defer timer.Stop()
+		c.queueMu.RLock()
+		if c.ctx.Err() != nil {
+			c.queueMu.RUnlock()
+			result = context.Cause(c.ctx)
+			return
+		}
 		select {
 		case c.closeRequest <- request:
+			c.queueMu.RUnlock()
 			select {
 			case result = <-request.result:
 			case <-c.ctx.Done():
@@ -320,8 +320,10 @@ func (c *Connection) closeGracefully(message SessionClose, cause error) error {
 				result = context.DeadlineExceeded
 			}
 		case <-c.ctx.Done():
+			c.queueMu.RUnlock()
 			result = context.Cause(c.ctx)
 		case <-timer.C:
+			c.queueMu.RUnlock()
 			result = context.DeadlineExceeded
 		}
 		c.shutdown(cause)
@@ -337,6 +339,17 @@ func (c *Connection) shutdown(cause error) {
 	c.shutdownOnce.Do(func() {
 		c.closing.Store(true)
 		c.cancel(cause)
+		// Cancellation releases blocked producers before the exclusive lease.
+		// No producer can append after this terminal disposal.
+		c.queueMu.Lock()
+		c.failPending()
+		for len(c.handlerQueue) > 0 {
+			select {
+			case <-c.handlerQueue:
+			default:
+			}
+		}
+		c.queueMu.Unlock()
 		_ = c.session.Close()
 		_ = c.transport.Close()
 	})
@@ -388,11 +401,16 @@ func (c *Connection) readLoop() {
 			return
 		}
 		if dispatch && c.config.Handler != nil {
+			c.queueMu.RLock()
+			if c.ctx.Err() != nil {
+				c.queueMu.RUnlock()
+				return
+			}
 			select {
 			case c.handlerQueue <- message:
-			case <-c.ctx.Done():
-				return
+				c.queueMu.RUnlock()
 			default:
+				c.queueMu.RUnlock()
 				c.shutdown(ErrHandlerQueueFull)
 				return
 			}
@@ -455,6 +473,8 @@ func (c *Connection) failPending() {
 			complete(item, err)
 		case item := <-c.outbound:
 			complete(item, err)
+		case request := <-c.closeRequest:
+			request.result <- err
 		default:
 			return
 		}

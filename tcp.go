@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"sync"
 	"time"
 )
 
@@ -15,10 +14,13 @@ const minFrameSize = HeaderSize
 // TCPTransport carries canonical DGProto v1 frames directly over a TCP stream.
 // Frames have no transport length prefix. One read and one write may proceed
 // concurrently; reads are serialized with reads and writes with writes.
+// Waiting for either lane honors cancellation without changing its owner's
+// deadlines. Cancellation during I/O can leave a partial frame on the stream;
+// callers must not assume that such a stream can be reused.
 type TCPTransport struct {
 	conn  net.Conn
-	read  sync.Mutex
-	write sync.Mutex
+	read  chan struct{}
+	write chan struct{}
 }
 
 // NewTCPTransport wraps conn and panics if conn is nil.
@@ -26,14 +28,16 @@ func NewTCPTransport(conn net.Conn) *TCPTransport {
 	if conn == nil {
 		panic("dgproto: nil TCP connection")
 	}
-	return &TCPTransport{conn: conn}
+	return &TCPTransport{conn: conn, read: make(chan struct{}, 1), write: make(chan struct{}, 1)}
 }
 
 // ReadFrame blocks until one complete frame is read or ctx is canceled.
 // It derives the body length from the fixed DGProto v1 header, not a length prefix.
 func (t *TCPTransport) ReadFrame(ctx context.Context) (Frame, error) {
-	t.read.Lock()
-	defer t.read.Unlock()
+	if err := acquireLane(ctx, t.read); err != nil {
+		return Frame{}, err
+	}
+	defer func() { <-t.read }()
 
 	stop, err := t.watchContext(ctx, true)
 	if err != nil {
@@ -84,8 +88,10 @@ func (t *TCPTransport) WriteFrame(ctx context.Context, frame Frame) error {
 		return fmt.Errorf("%w: got %d, maximum %d", ErrTransportFrameTooLarge, len(wire), MaxFrameSize)
 	}
 
-	t.write.Lock()
-	defer t.write.Unlock()
+	if err := acquireLane(ctx, t.write); err != nil {
+		return err
+	}
+	defer func() { <-t.write }()
 	stop, err := t.watchContext(ctx, false)
 	if err != nil {
 		return err
@@ -114,6 +120,19 @@ func (t *TCPTransport) Close() error {
 		return err
 	}
 	return nil
+}
+
+// acquireLane waits without spawning a goroutine or touching socket deadlines.
+func acquireLane(ctx context.Context, lane chan struct{}) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	select {
+	case lane <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (t *TCPTransport) watchContext(ctx context.Context, read bool) (func(), error) {
