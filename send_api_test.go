@@ -3,6 +3,7 @@ package dgproto
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"reflect"
 	"testing"
@@ -120,6 +121,34 @@ func TestCompleteSignalsExactlyOnce(t *testing.T) {
 	case <-completion:
 		t.Fatal("completion signaled twice")
 	default:
+	}
+}
+
+func TestSendContextPreCanceledWithAvailableCapacity(t *testing.T) {
+	for _, waitForWrite := range []bool{false, true} {
+		t.Run(fmt.Sprintf("waitForWrite=%t", waitForWrite), func(t *testing.T) {
+			local, peer := net.Pipe()
+			defer peer.Close()
+			session, _ := testSessions(t)
+			connection := NewConnection(NewTCPTransport(local), session, ConnectionConfig{OutboundQueue: 1})
+			defer connection.Close()
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			for range 64 {
+				var err error
+				if waitForWrite {
+					err = connection.SendAndWait(ctx, Ack{Sequences: []uint64{1}})
+				} else {
+					err = connection.SendContext(ctx, Ack{Sequences: []uint64{1}})
+				}
+				if !errors.Is(err, context.Canceled) {
+					t.Fatalf("pre-canceled send = %v", err)
+				}
+				if len(connection.outbound) != 0 {
+					t.Fatal("pre-canceled send enqueued a message")
+				}
+			}
+		})
 	}
 }
 

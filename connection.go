@@ -200,6 +200,10 @@ func (c *Connection) enqueueChannel(ctx context.Context, queue chan<- queuedMess
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	// A ready queue must not win over cancellation that predates this call.
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if c.closing.Load() {
 		return ErrConnectionClosed
 	}
