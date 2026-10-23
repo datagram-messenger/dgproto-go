@@ -16,6 +16,8 @@
 
 `dgproto-go` is a Go 1.25+ implementation of the **DGProto v1** wire protocol — a binary, session-oriented, cryptographically secured transport designed for low-latency bidirectional communication between native clients and Go backends.
 
+Use a security-patched Go toolchain. Windows TCP clients require Go 1.25.10 or a later patched release to address the standard-library advisory [GO-2026-4971](https://pkg.go.dev/vuln/GO-2026-4971); the module's minimum language version is not a security-patch guarantee.
+
 This is a **protocol library**, not an application server. It handles everything from TCP framing to Noise handshakes, AEAD encryption, replay protection, and rekeying — so you can focus on your application logic.
 
 > **Status:** The DGProto v1 specification is a draft. The protocol and Go module are versioned independently. Wire compatibility should be claimed only after stabilization.
@@ -28,7 +30,7 @@ DGProto v1 is structured in five layers, each with a clear responsibility:
 |-------|------|--------------|
 | **L4** | Application | Typed messages: chat, ping/pong, ack, close, rekey, error |
 | **L3** | Session | Sequence numbers, epochs, rekeying, replay protection, keepalive |
-| **L2** | Cryptography | Noise XX handshake, ChaCha20-Poly1305 AEAD, HKDF key schedule |
+| **L2** | Cryptography | Noise XX handshake, ChaCha20-Poly1305 AEAD, Noise Split traffic keys |
 | **L1** | Framing | 40-byte fixed header, TLV encoding, optional padding |
 | **L0** | Transport | TCP stream — body length derived from header, no length prefix |
 
@@ -77,13 +79,19 @@ See [Getting started](docs/guides/getting-started.md) for the full example with 
 
 - `Send` — enqueues a message into the bounded outbound queue. Returns when the message is accepted, not when it is written or received.
 - `SendAndWait` — waits for the local write to complete. Success means the frame was written to the socket, not acknowledged by the peer.
-- `SendPadded` — sends with explicit zero padding. Padding policy is an application responsibility.
+- `SendContext` / `SendPaddedContext` — wait for bounded queue capacity, not network I/O.
+- `SendPaddedAndWait` — waits for the local write with 0–255 random cleartext padding bytes authenticated with the exact header. Zero means no padding.
+- Keep queued messages and reachable buffers immutable. Cancellation after enqueue does not retract work or permit immediate buffer reuse; no send promises peer acknowledgement.
+
+**Pinned TCP client**
+
+`DialContext(ctx, address, ClientConfig)` requires a client identity and a provisioned 32-byte `ServerStatic` pin. It returns a **stopped** connection plus `AdmissionInfo` (no traffic keys). Call `Start(runtimeCtx)` explicitly and always close the connection. Establishment uses the earlier of the caller deadline and `ConnectionConfig.HandshakeTimeout` (zero: 10 seconds for dial plus handshake); canceling the dial context after success does not end the runtime. Success is not server admission or application authorization. See the [runnable pinned exchange](client_example_test.go).
 
 **Lifecycle**
 
-- `Connection.Close()` — performs a graceful close handshake.
-- `Server.Close()` — stops the listener and gracefully closes active connections.
-- `Server.Abort()` — immediately terminates the server and all connections.
+- `Connection.Close()` — attempts a close-frame write then stops transport; no peer acknowledgement or outbound queue-drain guarantee.
+- `Server.Close()` — stops networking and waits for server-owned work. Handlers/hooks must cooperate with cancellation.
+- `Server.Abort()` — closes networking without waiting for handlers/hooks; it does not kill callback goroutines.
 
 The first observed terminal cause is always retained. Later operations observe that result.
 

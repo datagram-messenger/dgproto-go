@@ -32,8 +32,10 @@ type MessageHandler func(context.Context, *Connection, any) error
 
 // ConnectionConfig controls an established connection runtime.
 type ConnectionConfig struct {
-	OutboundQueue     int
-	HandlerQueue      int
+	OutboundQueue int
+	HandlerQueue  int
+	// HandshakeTimeout bounds DialContext establishment (zero selects 10 seconds).
+	// NewConnection accepts an already-established session and does not use it.
 	HandshakeTimeout  time.Duration
 	ReadTimeout       time.Duration
 	WriteTimeout      time.Duration
@@ -160,15 +162,36 @@ func (c *Connection) TrySend(message any) error { return c.Send(message) }
 
 // SendContext waits for outbound queue capacity or context cancellation. It
 // returns after enqueueing and does not wait for the local transport write.
+// Buffer ownership and cancellation follow SendPaddedContext.
 func (c *Connection) SendContext(ctx context.Context, message any) error {
-	return c.enqueue(ctx, queuedMessage{message: message}, true)
+	return c.SendPaddedContext(ctx, message, 0)
+}
+
+// SendPaddedContext waits for queue acceptance with 0–255 bytes of random,
+// authenticated cleartext frame padding. Nil ctx means Background. Cancellation
+// after acceptance does not retract the message. The message and all reachable
+// buffers must remain immutable while pending; acceptance is not write completion
+// or peer acknowledgement. Use a fresh immutable message for admission-only sends.
+func (c *Connection) SendPaddedContext(ctx context.Context, message any, padLength uint8) error {
+	return c.enqueue(ctx, queuedMessage{message: message, padLength: padLength}, true)
 }
 
 // SendAndWait waits for queue capacity and for the local transport write to
 // complete. Completion does not imply that the peer processed the message.
+// Buffer ownership and cancellation follow SendPaddedAndWait.
 func (c *Connection) SendAndWait(ctx context.Context, message any) error {
+	return c.SendPaddedAndWait(ctx, message, 0)
+}
+
+// SendPaddedAndWait waits for capacity and the complete local padded write,
+// including any required rekey through the existing single writer. Nil ctx means
+// Background. Success permits buffer reuse, but is not peer receipt, processing,
+// or acknowledgement. Cancellation after enqueue can return before serialization
+// finishes and does not retract the message: do not mutate its reachable buffers
+// merely because a canceled call returned. Zero padding requests no padding.
+func (c *Connection) SendPaddedAndWait(ctx context.Context, message any, padLength uint8) error {
 	completion := make(chan error, 1)
-	if err := c.enqueue(ctx, queuedMessage{message: message, completion: completion}, true); err != nil {
+	if err := c.enqueue(ctx, queuedMessage{message: message, padLength: padLength, completion: completion}, true); err != nil {
 		return err
 	}
 	if ctx == nil {

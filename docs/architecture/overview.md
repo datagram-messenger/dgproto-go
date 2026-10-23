@@ -7,6 +7,7 @@ This document describes the Go implementation. The [protocol specification](../p
 - `header.go`, `frame.go`, `tlv.go`, `messages.go`: headers, frame validation, TLVs, and typed messages.
 - `crypto.go`: ChaCha20-Poly1305, nonce formation, and authenticated encryption.
 - `handshake.go`: Noise XX handshake state and key derivation.
+- `client.go`: required-pin TCP dial and bounded establishment; returns a stopped caller-owned runtime with identity metadata and no traffic secrets.
 - `session.go`, `rekey.go`, `replay.go`: epochs, directional keys, rekey transitions, and replay windows.
 - `transport.go`, `tcp.go`: frame transport and TCP framing (no outer length prefix; body length is derived from the fixed header).
 - `connection.go`: reader, writer, handler, queues, and lifecycle.
@@ -14,13 +15,13 @@ This document describes the Go implementation. The [protocol specification](../p
 
 ## Send and rekey flow
 
-Application calls enqueue typed messages into a bounded outbound queue. The single writer path serializes the message, applies explicit zero padding, selects the current send epoch and increasing sequence, authenticates the header as associated data, encrypts with ChaCha20-Poly1305, and writes the frame. `SendAndWait` observes this local writer result only.
+Application calls enqueue typed messages into a bounded outbound queue without copying their reachable buffers. The single writer serializes the message, selects the current send epoch and increasing sequence, encrypts the payload with ChaCha20-Poly1305, and authenticates the exact 40-byte header plus random cleartext trailing padding as associated data. Requested padding is 0–255 bytes; zero means no padding. `SendAndWait` and `SendPaddedAndWait` observe only the complete local writer result, including required rekey. Contextual admission waits for capacity; cancellation after enqueue does not retract work or imply serialization has finished.
 
 Rekey is serialized with sending. The writer emits the rekey transition and advances directional epoch/key state in protocol order so ordinary sends cannot race that transition. This is not application acknowledgement or correlation.
 
 ## Receive, replay, and previous epoch
 
-The reader validates framing and headers before decryption. It selects current or permitted previous receive-epoch state, applies the 2048-entry replay window, authenticates and decrypts, parses the typed payload, and commits replay state under the successful-processing rules. Previous-epoch state exists narrowly for in-flight transition traffic and is retired by the rekey state machine; arbitrary old epochs are rejected.
+The reader validates framing before decryption and authenticates the exact received header (including preserved unknown flags/reserved bytes) plus cleartext padding. It selects current or permitted previous receive-epoch state and checks the 2048-entry replay window. Failed authentication does not advance replay state; an authenticated malformed ordinary message consumes its sequence. Rekey validation and epoch/key/replay/grace changes commit atomically. Previous-epoch state exists narrowly for in-flight transition traffic and is retired by the rekey state machine; arbitrary old epochs are rejected.
 
 ## Concurrency and lifecycle
 

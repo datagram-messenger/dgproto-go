@@ -15,9 +15,20 @@
 // timeout, queue capacities of 16, 64 concurrent handshakes, and 1024
 // established connections.
 //
-// Send reports bounded-queue acceptance. SendAndWait waits for the local writer
-// result; neither operation guarantees peer receipt or application
-// acknowledgement. The first observed terminal cause is retained. Abort
-// terminates immediately; server shutdown uses Close for graceful teardown or
-// Abort for immediate teardown. Padding policy is an application responsibility.
+// DialContext requires a provisioned server static-key pin and returns a stopped
+// Connection plus non-secret AdmissionInfo. Explicit Start(runtimeCtx) controls
+// its lifetime independently of establishment context cancellation. Zero client
+// HandshakeTimeout bounds dial plus handshake to 10 seconds (or an earlier caller
+// deadline). Success is a local final-flight write, not server admission.
+//
+// Send and SendPaddedContext report bounded-queue acceptance. SendAndWait and
+// SendPaddedAndWait wait for the local writer result; none guarantees peer receipt
+// or application acknowledgement. Queued buffers must remain immutable; canceled
+// write-waits do not retract accepted messages or permit immediate buffer reuse.
+// Padding is random cleartext trailing bytes authenticated with the exact header;
+// zero requested length means no padding. Policy remains application-owned.
+//
+// The first observed terminal cause is retained. Close attempts a close-frame
+// write, not a peer-acknowledged handshake or queue drain. Server Abort closes
+// networking without waiting for callbacks; it cannot kill handler/hook goroutines.
 package dgproto

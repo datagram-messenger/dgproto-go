@@ -14,7 +14,7 @@ Use the relevant sources together, without treating implementation bugs as inten
 - [go.mod](go.mod): module identity and minimum Go version. [CI](.github/workflows/ci.yml) and [release workflow](.github/workflows/release.yml): actual automated gates, not assumed coverage.
 - [Contributing](.github/CONTRIBUTING.md): contribution workflow. [Security policy](SECURITY.md): private vulnerability reporting and application responsibilities.
 
-If sources disagree, identify the conflicting behavior and evidence. Correct clear implementation defects within the task; ask before choosing a materially ambiguous contract or incompatible protocol change. Do not copy aspirational specification text into API guarantees (for example, there is no implemented `unsafe` fast path or high-level client dial-and-handshake helper).
+If sources disagree, identify the conflicting behavior and evidence. Correct clear implementation defects within the task; ask before choosing a materially ambiguous contract or incompatible protocol change. Do not copy aspirational specification text into API guarantees (for example, there is no implemented `unsafe` fast path, automatic reconnect, or application server). `DialContext` is an additive required-pin TCP establishment helper returning a stopped runtime; it does not imply admission or application authorization.
 
 ## Repository orientation
 

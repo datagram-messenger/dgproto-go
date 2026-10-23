@@ -1,6 +1,39 @@
 # Getting started
 
-DGProto is a protocol and session library, not an application server. It does not expose a high-level client dial-and-handshake helper. Clients must provide transport integration and drive the exported handshake and session primitives for their deployment.
+DGProto is a protocol and session library, not an application server. `DialContext` provides a TCP client with a mandatory provisioned server static-key pin. Lower-level handshake/session primitives remain available.
+
+## Pinned client
+
+`ClientConfig` embeds `ConnectionConfig`: set `ConnectionConfig.HandshakeTimeout` in a composite literal. Zero selects 10 seconds for the **entire dial plus handshake**, bounded earlier by the caller context. Negative durations/queue capacities, missing client identity, missing/non-32-byte/all-zero server pins, and inconsistent read/liveness settings are rejected before dialing. There is no unverified default, retry, reconnect, or trust-on-first-use.
+
+```go
+// clientKey and serverPublic are securely provisioned application inputs.
+conn, info, err := dgproto.DialContext(establishmentCtx, address, dgproto.ClientConfig{
+    StaticKey: clientKey,
+    ServerStatic: serverPublic,
+    ConnectionConfig: dgproto.ConnectionConfig{
+        HandshakeTimeout: 5 * time.Second,
+        WriteTimeout: 5 * time.Second,
+        Handler: handler,
+    },
+})
+if err != nil {
+    return err
+}
+defer conn.Close()
+_ = info // PeerStatic, SessionID, RemoteAddr; no traffic secrets.
+conn.Start(runtimeCtx) // explicit: returned connection is STOPPED.
+```
+
+Canceling establishment after success does not cancel the established lifetime. The caller owns the connection, including closing an unstarted connection. Success confirms the pinned key and a complete **local** final-flight write, not server admission, readiness, or application authorization. Pin provisioning, persistence and rotation are application responsibilities. Metadata is non-secret but may still be privacy-sensitive.
+
+For a complete runnable, bounded, client/server exchange, run `go test -run ExampleDialContext -v`. See [the executable example](../../client_example_test.go). Its ephemeral demo identities are not a production key-management strategy; the example is not a messaging application server.
+
+## Sending and ownership
+
+`Send`, `TrySend`, and `SendPadded` report nonblocking queue acceptance (or `ErrOutboundQueueFull`). `SendContext`/`SendPaddedContext` wait for queue capacity; `SendAndWait`/`SendPaddedAndWait` also wait for the complete local write, including required rekey. None guarantees peer receipt, processing, acknowledgement, or durable delivery. Padding is random **cleartext** trailing bytes authenticated along with the exact header; zero length means no padding. It is not traffic obfuscation.
+
+Messages and reachable buffers are not snapshotted at enqueue. Keep them immutable while pending. A successful write-wait permits reuse; cancellation **after enqueue does not retract** the message and can return before serialization finishes, so cancellation alone does not permit buffer mutation. Use fresh immutable messages for acceptance-only sends. Application correlation, authorization, retries and idempotency remain application-owned; wire Ack is not durable delivery.
 
 ## Server
 
@@ -54,9 +87,9 @@ Noise XX authenticates the peer static key; application authorization remains a 
 
 ## Lifecycle
 
-* `Connection.Close()` performs the connection close handshake.
-* `Server.Close()` stops the listener and gracefully closes active connections.
-* `Server.Abort()` immediately stops the server and active connections.
+* `Connection.Close()` attempts a close-frame write then closes transport; it is not a peer acknowledgement or queue drain. `Done()` tracks runtime completion and `Err()` preserves the first terminal cause.
+* `Server.Close()` stops networking and waits for server-owned work. A positive `HandlerShutdownTimeout` bounds the post-cancellation handler wait by detaching it, not killing it; zero can wait indefinitely.
+* `Server.Abort()` closes networking without waiting for handlers/hooks. Synchronous admission and disconnect hooks must bound their own I/O; abort does not kill goroutines or guarantee a later `Close` returns.
 
 All three methods return an error; callers should handle it.
 
@@ -78,8 +111,10 @@ For internet-facing deployments, set explicit values to bound resource usage:
 | `KeepaliveInterval` | 30–60 s | How often an encrypted Ping is sent |
 | `KeepaliveTimeout` | 10–30 s | How long an unanswered Ping is tolerated before closing |
 
-`NewServer` rejects configurations where `ReadTimeout` is shorter than the
-effective keepalive liveness window (`KeepaliveInterval` + `KeepaliveTimeout`).
+`NewServer` and `DialContext` reject a positive `ReadTimeout` shorter than
+`max(IdleTimeout, KeepaliveInterval + KeepaliveTimeout)`. Zero is permitted.
+The illustrative table is not a universal production budget; choose values from
+measured service constraints and test slow/stalled peers and shutdown.
 Set `ReadTimeout` to zero to rely solely on `IdleTimeout` and keepalive
 liveness as the authoritative deadlines.
 
