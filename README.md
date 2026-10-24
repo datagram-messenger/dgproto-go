@@ -14,9 +14,9 @@
 
 </div>
 
-`dgproto-go` gives your Go application a binary session layer for two-way communication: establish a peer identity, exchange encrypted messages, and manage the connection's lifetime. It implements **DGProto v1 over TCP** for native clients and Go backends.
+Build two-way communication into your Go application without implementing framing, the Noise handshake, or session rekeying yourself. `dgproto-go` provides **authenticated, encrypted message sessions over persistent TCP connections**, with client and server runtimes and lower-level protocol primitives.
 
-Use it for desktop-client events, backend command channels, or custom protocol workloads where both peers send messages over a persistent connection. Go applications can use the client and server APIs; native Rust clients can target the same draft protocol, with compatibility validated against the exact revisions in use. **This is a transport/session library, not an application server:** accounts, permissions, payload semantics, and durable delivery remain yours.
+It implements the **draft DGProto v1 strict MVP**. Use it for desktop-client events, backend command channels, or custom binary protocols where either peer needs to send messages. **It is a protocol/session library, not an application server:** you define accounts, permissions, application messages, and delivery guarantees.
 
 - **Peer identity, not just encryption.** Noise XX authenticates static-key possession; the TCP client requires a provisioned server-key pin.
 - **Session protection.** ChaCha20-Poly1305 data frames, replay checks, and directional rekeying managed by the connection runtime.
@@ -24,7 +24,9 @@ Use it for desktop-client events, backend command channels, or custom protocol w
 - **A lifecycle you control.** Contexts, explicit client `Start`, shutdown APIs, and a retained terminal cause.
 - **Structured binary messages.** Typed messages and TLV codecs, with application envelopes carrying stream IDs and message types.
 
-> **Status:** Pre-1.0 Go module; DGProto v1 is a draft. Module and protocol versions are independent, and wire compatibility is not yet a stable guarantee.
+> **Status:** Pre-1.0 Go module; DGProto v1 is a draft. Module and protocol versions are independent. Wire compatibility is not yet a stable guarantee; validate other implementations against the exact draft and revisions you use.
+
+[Quick start](#quick-start) · [Contracts](#contracts-worth-knowing) · [Fit and limits](#fit-and-limits) · [Documentation](#documentation)
 
 ## Install
 
@@ -34,17 +36,21 @@ Requires **Go 1.25+**:
 go get github.com/datagram-messenger/dgproto-go
 ```
 
-Use a security-patched Go toolchain. Windows TCP clients require Go 1.25.10 or a later patched release to address the standard-library advisory [GO-2026-4971](https://pkg.go.dev/vuln/GO-2026-4971); the module's minimum language version is not a security-patch guarantee.
+Use a security-patched Go toolchain, not just the minimum language version. On Windows, [GO-2026-4971](https://pkg.go.dev/vuln/GO-2026-4971) affects TCP dialing with NUL-containing input; fixes are in Go **1.25.10** and **1.26.3** for their respective release lines.
 
 ## Quick start
 
 ### Try a pinned client/server exchange
 
-From a checkout of this repository:
+Run a self-contained exchange on loopback — no separate service or credentials needed:
 
 ```sh
-go test -run "^ExampleDialContext$" -count=1 -v
+git clone https://github.com/datagram-messenger/dgproto-go.git
+cd dgproto-go
+go test -run "^ExampleDialContext$" -count=1 -timeout=15s -v
 ```
+
+Already have a checkout? Run just the `go test` command from its root. A successful run reports `ExampleDialContext` as passing; the test checks that both peers exchanged an application envelope.
 
 The [complete executable example](client_example_test.go) creates loopback peers, allowlists the client key, pins the server key, calls `Start`, exchanges application envelopes, and closes both sides. It uses ephemeral in-memory identities and bounded waits — **a learning example, not production key management or an application server**.
 
@@ -69,7 +75,8 @@ func WriteEnvelope(ctx context.Context, address string, clientKey dgproto.Static
 	runtimeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	conn, _, err := dgproto.DialContext(runtimeCtx, address, dgproto.ClientConfig{
+	establishmentCtx, stopEstablishment := context.WithTimeout(ctx, time.Second)
+	conn, _, err := dgproto.DialContext(establishmentCtx, address, dgproto.ClientConfig{
 		StaticKey:    clientKey,
 		ServerStatic: serverPublic,
 		ConnectionConfig: dgproto.ConnectionConfig{
@@ -77,6 +84,7 @@ func WriteEnvelope(ctx context.Context, address string, clientKey dgproto.Static
 			WriteTimeout:     time.Second,
 		},
 	})
+	stopEstablishment() // Does not cancel the established connection's lifetime.
 	if err != nil {
 		return err
 	}
@@ -112,7 +120,9 @@ See [sending and ownership](docs/guides/getting-started.md#sending-and-ownership
 ## Fit and limits
 
 - **TCP, not independent parallel streams.** Handlers run serially per connection. Slow handlers delay later messages; a full handler queue terminates the connection. TCP head-of-line blocking still applies, regardless of stream IDs.
-- **No automatic reconnect.** Reconnection and retry policy belong to the application. The current MVP has no cipher negotiation, 0-RTT, or resumption.
+- **A fixed TCP profile.** Three-flight Noise XX and ChaCha20-Poly1305 only; no QUIC transport, cipher negotiation, 0-RTT, resumption, or traffic obfuscation. Random authenticated cleartext padding is available, with policy owned by the application.
+- **Small, bounded frames.** The total wire frame is at most 65,535 bytes, including the 40-byte header, data-frame tag, and any padding. Application envelopes and TLVs reduce the available application payload further; chunk larger data yourself.
+- **No automatic reconnect.** Reconnection and retry policy belong to the application.
 - **Bounded defaults are a starting point.** Server defaults are queues of 16, 64 concurrent handshakes, and 1024 active connections. Handshake timeout defaults to 10 seconds; read/write/idle timeouts and keepalive are disabled by default. Set and test service-specific limits, downstream budgets, and [timeouts](docs/guides/getting-started.md#production-timeout-guidance) before deployment.
 
 ## Security
