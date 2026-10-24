@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes the Go implementation. The [protocol specification](../protocol/dgproto-v1.md) is normative for wire behavior.
+This document describes the Go implementation. The [protocol specification](../protocol/dgproto-v1.md) is normative for wire behavior. The [package layout plan](package-layout.md) records the incremental reorganization checkpoint and next scoped block.
 
 ## File map
 
@@ -12,6 +12,7 @@ This document describes the Go implementation. The [protocol specification](../p
 - `transport.go`, `tcp.go`: frame transport and TCP framing (no outer length prefix; body length is derived from the fixed header).
 - `connection.go`: reader, writer, handler, queues, and lifecycle.
 - `server.go`: listener, limits, admission, and shutdown.
+- `internal/acceptpolicy/errors.go`: stateless accept-error classification; the server retains backoff and lifecycle ownership.
 
 ## Send and rekey flow
 

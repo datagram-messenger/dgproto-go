@@ -3,9 +3,11 @@ package dgproto
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"net"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -555,6 +557,22 @@ func TestIsTemporaryAcceptError(t *testing.T) {
 		{"temporaryAcceptError", temporaryAcceptError{}, true},
 		{"net timeout", &net.OpError{Op: "accept", Err: &timeoutError{}}, true},
 		{"net non-timeout", &net.OpError{Op: "accept", Err: errors.New("permanent")}, false},
+		{"wrapped timeout", fmt.Errorf("accept: %w", timeoutError{}), true},
+		{"wrapped non-timeout", fmt.Errorf("accept: %w", &net.OpError{Op: "accept", Err: errors.New("permanent")}), false},
+		{"ECONNABORTED", syscall.ECONNABORTED, true},
+		{"wrapped ECONNABORTED", fmt.Errorf("accept: %w", syscall.ECONNABORTED), true},
+		{"EMFILE", syscall.EMFILE, true},
+		{"wrapped EMFILE", fmt.Errorf("accept: %w", syscall.EMFILE), true},
+		{"ENFILE", syscall.ENFILE, true},
+		{"wrapped ENFILE", fmt.Errorf("accept: %w", syscall.ENFILE), true},
+		{"other errno", syscall.EINVAL, false},
+		{"wrapped other errno", fmt.Errorf("accept: %w", syscall.EINVAL), false},
+		{"closed", net.ErrClosed, false},
+		{"wrapped closed", fmt.Errorf("accept: %w", net.ErrClosed), false},
+		{"marker false", acceptMarkerError(false), false},
+		{"wrapped marker alone", fmt.Errorf("accept: %w", temporaryAcceptError{}), false},
+		{"deprecated Temporary only", deprecatedTemporaryAcceptError{}, false},
+		{"wrapped deprecated Temporary only", fmt.Errorf("accept: %w", deprecatedTemporaryAcceptError{}), false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -564,6 +582,19 @@ func TestIsTemporaryAcceptError(t *testing.T) {
 		})
 	}
 }
+
+// acceptMarkerError deliberately implements only the direct synthetic marker.
+type acceptMarkerError bool
+
+func (acceptMarkerError) Error() string       { return "accept marker" }
+func (e acceptMarkerError) IsTemporary() bool { return bool(e) }
+
+// Temporary alone must not make an accept error retryable.
+type deprecatedTemporaryAcceptError struct{}
+
+func (deprecatedTemporaryAcceptError) Error() string   { return "deprecated temporary accept error" }
+func (deprecatedTemporaryAcceptError) Timeout() bool   { return false }
+func (deprecatedTemporaryAcceptError) Temporary() bool { return true }
 
 // timeoutError is a minimal net.Error that reports Timeout() == true.
 type timeoutError struct{}
