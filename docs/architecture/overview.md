@@ -14,7 +14,8 @@ This document describes the Go implementation. The [protocol specification](../p
 - `connection_lifecycle.go`: start/close/abort coordination, Done ownership, terminal cause and shutdown.
 - `connection_send.go`: send/queue API, enqueue admission, single writer/rekey ordering, completion and pending disposal.
 - `connection_keepalive.go`: maintenance loop, idle/keepalive timers, timeout default, ping expectation/ACK and activity helpers.
-- `server.go`: listener, limits, admission, and shutdown.
+- `server.go`: central server/config/error definitions, listener, limits, admission/disconnect, handoff and shutdown.
+- `server_handshake.go`: responder establishment, authenticated allowlist and handshake-frame validation shared with the client; root symbols and wire behavior unchanged.
 - `internal/acceptpolicy/errors.go`: stateless accept-error classification; the server retains backoff and lifecycle ownership.
 
 ## Send and rekey flow

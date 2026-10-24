@@ -19,7 +19,7 @@ When sources conflict, identify the exact discrepancy and evidence. Do not treat
 | Area | Implementation and starting tests |
 |---|---|
 | Headers, frames, TLV, typed messages | `header.go`, `frame.go`, `tlv.go`, `messages.go`; matching tests, `conformance_test.go`, `parser_fuzz_test.go` |
-| Noise handshake and AEAD | `handshake.go`, `crypto.go`; matching tests, `mvp_constraints_test.go` |
+| Noise handshake and AEAD | `handshake.go`, `crypto.go`, `server_handshake.go` (responder establishment, allowlist and root frame validator shared with client); matching tests, `server_test.go`, `client_*_test.go`, `hardening_test.go`, `mvp_constraints_test.go` |
 | Session, replay, directional rekey | `session.go`, `replay.go`, `rekey.go`; matching tests, `rekey_state_test.go`, `session_transport_edge_cases_test.go` |
 | TCP establishment and I/O | `client.go`, `transport.go`, `tcp.go`; `client_*_test.go`, `tcp_test.go` |
 | Runtime, queues, admission, shutdown | `connection.go` (definitions, constructor, reader, handler), `connection_send.go` (send/queue/writer), `connection_keepalive.go` (maintenance/timers/ping ACK), `connection_lifecycle.go` (start/close/terminal ownership), `server.go`; matching tests, `send_api_test.go`, `send_shutdown_property_test.go`, `connection_start_close_test.go` |
