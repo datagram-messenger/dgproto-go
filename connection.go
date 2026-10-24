@@ -96,7 +96,12 @@ type Connection struct {
 	started   atomic.Bool
 	closing   atomic.Bool
 	pingNonce atomic.Uint64
-	wg        sync.WaitGroup
+	// pong is a coalesced wakeup only. The protected acknowledgement cannot
+	// be displaced by stale responses, nor lost when a timer is also ready.
+	pingMu           sync.Mutex
+	pingExpected     uint64
+	pingAcknowledged bool
+	wg               sync.WaitGroup
 }
 
 // NewConnection constructs a stopped established-session runtime.
@@ -350,6 +355,7 @@ func (c *Connection) shutdown(cause error) {
 	c.shutdownOnce.Do(func() {
 		c.closing.Store(true)
 		c.cancel(cause)
+		c.clearPing()
 		// Cancellation releases blocked producers before the exclusive lease.
 		// No producer can append after this terminal disposal.
 		c.queueMu.Lock()
@@ -397,10 +403,7 @@ func (c *Connection) readLoop() {
 		case *PingPong:
 			dispatch = false
 			if m.IsResponse {
-				select {
-				case c.pong <- m.Nonce:
-				default:
-				}
+				c.acknowledgePing(m.Nonce)
 			} else if err := c.enqueueControl(PingPong{IsResponse: true, Nonce: m.Nonce}, true); err != nil {
 				c.shutdown(err)
 				return
@@ -515,6 +518,50 @@ func (c *Connection) writeMessage(item queuedMessage) error {
 	}
 }
 
+// beginPing publishes the expectation before enqueue, including for a reply
+// arriving before enqueueControl returns. Zero is reserved across rollover.
+func (c *Connection) beginPing() uint64 {
+	c.pingMu.Lock()
+	defer c.pingMu.Unlock()
+	if c.ctx.Err() != nil {
+		return 0
+	}
+	nonce := c.pingNonce.Load() + 1
+	if nonce == 0 {
+		nonce = 1
+	}
+	c.pingExpected, c.pingAcknowledged = nonce, false
+	c.pingNonce.Store(nonce)
+	return nonce
+}
+
+func (c *Connection) clearPing() {
+	c.pingMu.Lock()
+	c.pingExpected, c.pingAcknowledged = 0, false
+	c.pingMu.Unlock()
+}
+
+func (c *Connection) acknowledgePing(nonce uint64) {
+	c.pingMu.Lock()
+	defer c.pingMu.Unlock()
+	if c.pingExpected == 0 || nonce != c.pingExpected || c.ctx.Err() != nil {
+		return
+	}
+	c.pingExpected, c.pingAcknowledged = 0, true
+	select {
+	case c.pong <- nonce:
+	default:
+	}
+}
+
+func (c *Connection) consumePingAcknowledgement() bool {
+	c.pingMu.Lock()
+	defer c.pingMu.Unlock()
+	acknowledged := c.pingAcknowledged
+	c.pingAcknowledged = false
+	return acknowledged
+}
+
 func (c *Connection) maintenanceLoop() {
 	var idleTimer, keepaliveTimer, pongTimer *time.Timer
 	var idle, keepalive, pongDeadline <-chan time.Time
@@ -539,8 +586,8 @@ func (c *Connection) maintenanceLoop() {
 			return
 		case <-c.activity:
 			resetTimer(idleTimer, c.config.IdleTimeout)
-		case nonce := <-c.pong:
-			if outstanding != 0 && nonce == outstanding {
+		case <-c.pong:
+			if outstanding != 0 && c.consumePingAcknowledgement() {
 				outstanding = 0
 				if pongTimer != nil {
 					if !pongTimer.Stop() {
@@ -558,8 +605,12 @@ func (c *Connection) maintenanceLoop() {
 			if outstanding != 0 {
 				continue
 			}
-			outstanding = c.pingNonce.Add(1)
+			outstanding = c.beginPing()
+			if outstanding == 0 {
+				return
+			}
 			if err := c.enqueueControl(PingPong{Nonce: outstanding}, false); err != nil {
+				c.clearPing()
 				outstanding = 0
 				resetTimer(keepaliveTimer, c.config.KeepaliveInterval)
 				continue
@@ -568,6 +619,15 @@ func (c *Connection) maintenanceLoop() {
 			pongDeadline = pongTimer.C
 			keepalive = nil
 		case <-pongDeadline:
+			// A ready timer must not beat an acknowledgement already recorded
+			// by the reader just because select chose the timer wakeup first.
+			if c.consumePingAcknowledgement() {
+				outstanding = 0
+				pongDeadline = nil
+				resetTimer(keepaliveTimer, c.config.KeepaliveInterval)
+				keepalive = keepaliveTimer.C
+				continue
+			}
 			c.shutdown(ErrKeepaliveTimeout)
 			return
 		case <-idle:
