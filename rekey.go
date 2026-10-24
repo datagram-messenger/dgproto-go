@@ -39,10 +39,13 @@ type RekeyState struct {
 func NewRekeyState() *RekeyState { return &RekeyState{Epoch: 1} }
 
 // ComputeKeyConfirm returns the HMAC-SHA256 confirmation for the immediately
-// following epoch. It rejects skipped epochs and exhausted state.
+// following epoch. It rejects uninitialized epoch zero, skipped epochs, and exhausted state.
 func (r *RekeyState) ComputeKeyConfirm(secret []byte, epoch uint32) ([32]byte, error) {
 	if r == nil || r.Epoch == ^uint32(0) {
 		return [32]byte{}, ErrEpochExhausted
+	}
+	if r.Epoch == 0 {
+		return [32]byte{}, fmt.Errorf("%w: current epoch is zero", ErrInvalidEpoch)
 	}
 	if epoch != r.Epoch+1 {
 		return [32]byte{}, fmt.Errorf("%w: got %d, want %d", ErrInvalidEpoch, epoch, r.Epoch+1)
