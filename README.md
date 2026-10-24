@@ -4,7 +4,7 @@
 
 # dgproto-go
 
-**Go implementation of the DGProto v1 wire protocol and secure session runtime.**
+**Authenticated, encrypted, bidirectional TCP sessions for Go.**
 
 [![CI](https://github.com/datagram-messenger/dgproto-go/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/datagram-messenger/dgproto-go/actions/workflows/ci.yml?query=branch%3Amain)
 [![Go Reference](https://pkg.go.dev/badge/github.com/datagram-messenger/dgproto-go.svg)](https://pkg.go.dev/github.com/datagram-messenger/dgproto-go)
@@ -14,131 +14,128 @@
 
 </div>
 
----
+`dgproto-go` gives your Go application a binary session layer for two-way communication: establish a peer identity, exchange encrypted messages, and manage the connection's lifetime. It implements **DGProto v1 over TCP** for native clients and Go backends.
 
-`dgproto-go` is a Go 1.25+ implementation of the **DGProto v1** wire protocol — a binary, session-oriented, cryptographically secured transport designed for low-latency bidirectional communication between native clients and Go backends.
+Use it for desktop-client events, backend command channels, or custom protocol workloads where both peers send messages over a persistent connection. Go applications can use the client and server APIs; native Rust clients can target the same draft protocol, with compatibility validated against the exact revisions in use. **This is a transport/session library, not an application server:** accounts, permissions, payload semantics, and durable delivery remain yours.
 
-Use a security-patched Go toolchain. Windows TCP clients require Go 1.25.10 or a later patched release to address the standard-library advisory [GO-2026-4971](https://pkg.go.dev/vuln/GO-2026-4971); the module's minimum language version is not a security-patch guarantee.
+- **Peer identity, not just encryption.** Noise XX authenticates static-key possession; the TCP client requires a provisioned server-key pin.
+- **Session protection.** ChaCha20-Poly1305 data frames, replay checks, and directional rekeying managed by the connection runtime.
+- **Explicit backpressure.** Bounded outbound and handler queues, plus separate server limits for handshakes and active connections.
+- **A lifecycle you control.** Contexts, explicit client `Start`, shutdown APIs, and a retained terminal cause.
+- **Structured binary messages.** Typed messages and TLV codecs, with application envelopes carrying stream IDs and message types.
 
-This is a **protocol library**, not an application server. It handles everything from TCP framing to Noise handshakes, AEAD encryption, replay protection, and rekeying — so you can focus on your application logic.
-
-> **Status:** The DGProto v1 specification is a draft. The protocol and Go module are versioned independently. Wire compatibility should be claimed only after stabilization.
-
-## How it works
-
-DGProto v1 is structured in five layers, each with a clear responsibility:
-
-| Layer | Role | What it does |
-|-------|------|--------------|
-| **L4** | Application | Typed messages: chat, ping/pong, ack, close, rekey, error |
-| **L3** | Session | Sequence numbers, epochs, rekeying, replay protection, keepalive |
-| **L2** | Cryptography | Noise XX handshake, ChaCha20-Poly1305 AEAD, Noise Split traffic keys |
-| **L1** | Framing | 40-byte fixed header, TLV encoding, optional padding |
-| **L0** | Transport | TCP stream — body length derived from header, no length prefix |
+> **Status:** Pre-1.0 Go module; DGProto v1 is a draft. Module and protocol versions are independent, and wire compatibility is not yet a stable guarantee.
 
 ## Install
+
+Requires **Go 1.25+**:
 
 ```sh
 go get github.com/datagram-messenger/dgproto-go
 ```
 
+Use a security-patched Go toolchain. Windows TCP clients require Go 1.25.10 or a later patched release to address the standard-library advisory [GO-2026-4971](https://pkg.go.dev/vuln/GO-2026-4971); the module's minimum language version is not a security-patch guarantee.
+
 ## Quick start
 
-Generate a key, create a listener, and start accepting connections:
+### Try a pinned client/server exchange
+
+From a checkout of this repository:
+
+```sh
+go test -run "^ExampleDialContext$" -count=1 -v
+```
+
+The [complete executable example](client_example_test.go) creates loopback peers, allowlists the client key, pins the server key, calls `Start`, exchanges application envelopes, and closes both sides. It uses ephemeral in-memory identities and bounded waits — **a learning example, not production key management or an application server**.
+
+### Integrate a pinned client
+
+This small integration helper is not a standalone program. Supply an existing server address, a securely provisioned client key, and the intended server's 32-byte public-key pin. It sends one application envelope and closes the connection; a persistent client should keep the runtime open and install a receive handler.
 
 ```go
-key, err := dgproto.GenerateStaticKey()
-if err != nil {
-    log.Fatal(err)
-}
+package example
 
-listener, err := net.Listen("tcp", ":9000")
-if err != nil {
-    log.Fatal(err)
-}
+import (
+	"context"
+	"errors"
+	"time"
 
-server, err := dgproto.NewServer(dgproto.ServerConfig{
-    StaticKey: key,
-    Handler: func(ctx context.Context, conn *dgproto.Connection, message any) error {
-        log.Printf("received %T", message)
-        return nil
-    },
-})
-if err != nil {
-    log.Fatal(err)
-}
+	dgproto "github.com/datagram-messenger/dgproto-go"
+)
 
-if err := server.Serve(listener); err != nil && !errors.Is(err, dgproto.ErrServerClosed) {
-    log.Fatal(err)
+// WriteEnvelope reports a local socket write, not peer receipt or admission.
+func WriteEnvelope(ctx context.Context, address string, clientKey dgproto.StaticKey,
+	serverPublic []byte, message dgproto.EncryptedData) (err error) {
+	runtimeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	conn, _, err := dgproto.DialContext(runtimeCtx, address, dgproto.ClientConfig{
+		StaticKey:    clientKey,
+		ServerStatic: serverPublic,
+		ConnectionConfig: dgproto.ConnectionConfig{
+			HandshakeTimeout: time.Second,
+			WriteTimeout:     time.Second,
+		},
+	})
+	if err != nil {
+		return err
+	}
+	defer func() { err = errors.Join(err, conn.Close()) }()
+
+	conn.Start(runtimeCtx) // DialContext returns a stopped, caller-owned runtime.
+	return conn.SendAndWait(runtimeCtx, message)
 }
 ```
 
-See [Getting started](docs/guides/getting-started.md) for the full example with admission, authorization, and shutdown guidance.
+The timeouts above are illustrative, not universal service budgets. Keep the message and its reachable buffers immutable while pending: a canceled write-wait does not retract an accepted message.
 
-## Key concepts
+**Server integration:** construct `NewServer(ServerConfig{...})`, then pass a TCP listener to `Serve`. Configure `AllowedClients` and/or `Admission` before dispatch: an empty allowlist permits any valid authenticated client, and a successful client dial does **not** prove server admission or application authorization. Persist and protect static identities; provision and rotate pins through a trusted channel.
 
-**Sending**
+Continue with [server setup](docs/guides/getting-started.md#server), [admission and authorization](docs/guides/getting-started.md#admission-and-authorization), and [lifecycle](docs/guides/getting-started.md#lifecycle).
 
-- `Send` — enqueues a message into the bounded outbound queue. Returns when the message is accepted, not when it is written or received.
-- `SendAndWait` — waits for the local write to complete. Success means the frame was written to the socket, not acknowledged by the peer.
-- `SendContext` / `SendPaddedContext` — wait for bounded queue capacity, not network I/O.
-- `SendPaddedAndWait` — waits for the local write with 0–255 random cleartext padding bytes authenticated with the exact header. Zero means no padding.
-- Keep queued messages and reachable buffers immutable. Cancellation after enqueue does not retract work or permit immediate buffer reuse; no send promises peer acknowledgement.
+## Contracts worth knowing
 
-**Pinned TCP client**
+| API | Success means |
+|-----|---------------|
+| `Send` / `TrySend` | Nonblocking queue acceptance; saturation returns `ErrOutboundQueueFull` |
+| `SendContext` | Queue acceptance after waiting for capacity, not network I/O |
+| `SendAndWait` | Complete **local** transport write, including any required rekey |
 
-`DialContext(ctx, address, ClientConfig)` requires a client identity and a provisioned 32-byte `ServerStatic` pin. It returns a **stopped** connection plus `AdmissionInfo` (no traffic keys). Call `Start(runtimeCtx)` explicitly and always close the connection. Establishment uses the earlier of the caller deadline and `ConnectionConfig.HandshakeTimeout` (zero: 10 seconds for dial plus handshake); canceling the dial context after success does not end the runtime. Success is not server admission or application authorization. See the [runnable pinned exchange](client_example_test.go).
+The padded variants follow the same acceptance/write distinction. **None promises peer receipt, processing, acknowledgement, or durable delivery.** Define application acknowledgements, retries, and idempotency explicitly.
 
-**Lifecycle**
+- **Runtime ownership:** call `Start(runtimeCtx)` and always close a dialed connection, even if it never starts. The dial context bounds establishment only; canceling it after success does not stop the runtime.
+- **Shutdown:** `Connection.Close` attempts a close-frame write, not a queue drain or peer-acknowledged close. `Done` tracks runtime completion; `Err` retains the first terminal cause.
+- **Server shutdown:** `Close` waits for server-owned work. A positive `HandlerShutdownTimeout` detaches a stuck canceled handler; zero can wait indefinitely. `Abort` closes networking without waiting for callbacks, but cannot kill their goroutines. Bound handler and hook work yourself.
 
-- `Connection.Close()` — attempts a close-frame write then stops transport; no peer acknowledgement or outbound queue-drain guarantee.
-- `Server.Close()` — stops networking and waits for server-owned work. Handlers/hooks must cooperate with cancellation.
-- `Server.Abort()` — closes networking, including sockets in admission and runtime handoff, without waiting for handlers/hooks; it does not kill callback goroutines.
-- Termination discards queued outbound/control/handler references and completes pending local-write waits with an error, including connections closed before `Start`. An in-progress writer or handler retains its own message until it exits; this is not delivery or a secure-memory-erasure guarantee.
-- `ServerConfig.HandlerShutdownTimeout` rejects negative values. Zero is an unbounded handler wait; positive values may detach a canceled handler, not kill it. Admission and disconnect hooks must bound their own work.
-- Direct `TCPTransport` calls honor cancellation while waiting for the read/write lane. Interrupted I/O may leave a partial frame; do not assume the stream remains reusable.
-- Direct session callers must transmit the exact emitted `RekeyInit`, then call `MarkRekeySent` before retrying their message. Mutation of emitted ciphertext or padding is rejected against an independent snapshot.
+See [sending and ownership](docs/guides/getting-started.md#sending-and-ownership) and the [Go API reference](https://pkg.go.dev/github.com/datagram-messenger/dgproto-go) for the full contracts, including lower-level session/rekey APIs.
 
-The first observed terminal cause is always retained. Later operations observe that result.
+## Fit and limits
 
-**Authorization**
-
-Noise XX authenticates the peer's static key — it does not grant application permissions. Use `ServerConfig.AllowedClients` to restrict connections to a known key allowlist, and `ServerConfig.Admission` to apply custom authorization logic after authentication and before any messages are dispatched.
-
-**Production timeouts**
-
-`NewServer` uses a 10-second `HandshakeTimeout` when the configured value is zero;
-zero does not disable the handshake deadline. `ReadTimeout`, `WriteTimeout`,
-`IdleTimeout`, and `KeepaliveInterval` remain zero (disabled) by default. When
-keepalive is enabled with a zero `KeepaliveTimeout`, its effective timeout is
-twice `KeepaliveInterval`. For internet-facing deployments:
-
-| Field | Suggested value | Purpose |
-|-------|----------------|---------|
-| `HandshakeTimeout` | 10 s | Bound unauthenticated TCP connections |
-| `ReadTimeout` | ≥ keepalive window | Per-frame read deadline |
-| `WriteTimeout` | 5–30 s | Per-frame write deadline |
-| `IdleTimeout` | 5–15 min | Close inactive connections |
-| `KeepaliveInterval` | 30–60 s | How often a Ping is sent |
-| `KeepaliveTimeout` | 10–30 s | How long an unanswered Ping is tolerated |
+- **TCP, not independent parallel streams.** Handlers run serially per connection. Slow handlers delay later messages; a full handler queue terminates the connection. TCP head-of-line blocking still applies, regardless of stream IDs.
+- **No automatic reconnect.** Reconnection and retry policy belong to the application. The current MVP has no cipher negotiation, 0-RTT, or resumption.
+- **Bounded defaults are a starting point.** Server defaults are queues of 16, 64 concurrent handshakes, and 1024 active connections. Handshake timeout defaults to 10 seconds; read/write/idle timeouts and keepalive are disabled by default. Set and test service-specific limits, downstream budgets, and [timeouts](docs/guides/getting-started.md#production-timeout-guidance) before deployment.
 
 ## Security
 
-DGProto v1 uses `Noise_XX_25519_ChaChaPoly_SHA256` for the handshake and ChaCha20-Poly1305 for all data frames. The MVP profile is fixed — no cipher negotiation, no 0-RTT, no resumption.
+The current profile uses `Noise_XX_25519_ChaChaPoly_SHA256` and ChaCha20-Poly1305 data-frame encryption. Authentication proves key possession, not account identity or permission. Applications own key storage and rotation, authorization, endpoint hardening, and dependency updates; neither the draft nor passing tests establishes production assurance.
 
-**Do not report vulnerabilities in public issues.** Use the [GitHub security advisory form](https://github.com/datagram-messenger/dgproto-go/security/advisories/new) instead. See [SECURITY.md](SECURITY.md) for the full policy.
+**Report vulnerabilities privately**, not in public issues: use the [GitHub security advisory form](https://github.com/datagram-messenger/dgproto-go/security/advisories/new). Read [SECURITY.md](SECURITY.md) for the policy.
 
 ## Documentation
 
-| Document | Description |
-|----------|-------------|
-| [Getting started](docs/guides/getting-started.md) | Server setup, admission, lifecycle, and timeout guidance |
-| [Architecture](docs/architecture/overview.md) | Implementation structure and concurrency model |
-| [Protocol specification](docs/protocol/dgproto-v1.md) | Normative wire format and protocol requirements |
-| [Test vectors](testdata/vectors/README.md) | Interoperability fixture scope and validation levels |
-| [Contributing](.github/CONTRIBUTING.md) | Contribution workflow and requirements |
-| [0.6.0 hardening](docs/0.6.0-candidate.md) | Release scope, local validation, and remaining gates |
+| Start here | What you'll find |
+|------------|------------------|
+| [Getting started](docs/guides/getting-started.md) | Client/server integration, admission, ownership, shutdown, and timeouts |
+| [Go API reference](https://pkg.go.dev/github.com/datagram-messenger/dgproto-go) | Exported types, configuration, and method contracts |
+| [Architecture](docs/architecture/overview.md) | Framing, rekey flow, replay handling, and concurrency |
+| [Protocol specification](docs/protocol/dgproto-v1.md) | Normative draft wire format and cryptographic state transitions |
+| [Test vectors](testdata/vectors/README.md) | Fixture scope and validation levels, not an interoperability certification |
+| [0.6.0 hardening notes](docs/0.6.0-candidate.md) | Release scope, recorded validation, and remaining gates |
+
+## Contributing
+
+Trying DGProto in a real workload? [Open an issue](https://github.com/datagram-messenger/dgproto-go/issues) with integration feedback, a documentation gap, or a public-safe bug report. Small examples of what was hard to integrate are especially useful. For code or documentation changes, start with the [contribution guide](.github/CONTRIBUTING.md).
 
 ## License
 
-Apache 2.0 — see [LICENSE](LICENSE).
+[Apache 2.0](LICENSE).
