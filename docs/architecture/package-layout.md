@@ -8,22 +8,22 @@ The root `dgproto` package remains the public API and owns its exported definiti
 
 | Block | Scope | Gate to proceed |
 |---|---|---|
-| 1 (current) | Extract the stateless accept-error classifier to `internal/acceptpolicy`; retain the root wrapper and runtime tests. | Direct/wrapped regression parity and default/tagged package checks. |
-| 2 (next, separate commit) | Root-only connection send/queue implementation split into `connection_send.go`; types and white-box tests stay at root. | Preserve enqueue, cancellation, writer/rekey ordering, completion and shutdown contracts. |
+| 1 (landed) | Extract the stateless accept-error classifier to `internal/acceptpolicy`; retain the root wrapper and runtime tests. | Direct/wrapped regression parity and default/tagged package checks. |
+| 2 (landed, separate commit) | Root-only connection send/queue implementation split into `connection_send.go`; types and white-box tests stay at root. | Preserve enqueue, cancellation, writer/rekey ordering, completion and shutdown contracts. |
 | 3 (future, separate commit) | Root-only keepalive/maintenance split into `connection_keepalive.go`. | Preserve timer reset, ping acknowledgement, idle timeout and cancellation behavior with focused liveness tests and race execution. |
 | 4 (future, separate commit) | Root-only lifecycle split into `connection_lifecycle.go`. | Preserve start/close/abort ownership, first cause, handler completion and server wait boundaries. |
 | 5 (reassessment, not promised extraction) | Reconsider real internal seams only after root cohesion improves. | Prove a one-way dependency graph and explicit state/buffer ownership; reject alias facades and speculative abstractions. |
 
 `ReplayWindow` is public: moving its definition or substituting an alias risks public type identity, representation and white-box state assumptions. It is not a reason to expose a new internal state type. TLV, headers, frames and typed messages are also public and carry copy/alias, field layout, byte encoding and error contracts; a wire package would require a separately reviewed compatibility design, not a mechanical move. `Session`, replay and rekey share locking and atomic receive transitions: authentication failure must not advance replay, malformed ordinary authenticated messages consume sequence, and rekey validation/key/epoch/replay/grace updates must remain atomic. Keep them together now. Preserve root sentinels and `errors.Is`/`errors.As`, public identity/representation, defaults, reachable-buffer ownership, queue bounds and cancellation semantics in every block. No new public types, aliases, dependencies, crypto algorithms or wire changes are part of this roadmap.
 
-## Current checkpoint: first stateless leaf only
+## Historical block 1 checkpoint: first stateless leaf
 
 - `internal/acceptpolicy/errors.go` exports only `Retryable(error) bool` within an internal package; production imports are exactly `errors`, `net`, `syscall`, with no root dependency.
 - `server.go` retains unexported `isTemporaryAcceptError` as a forwarding compatibility wrapper. `Serve` remains its sole production caller. Backoff starts at 5 ms, doubles up to 1 s, and shutdown/timer/admission ownership remains in the server.
 - The classifier algorithm and explanatory criteria were relocated unchanged: `errors.As` finds timeout `net.Error`; `errors.Is` matches `ECONNABORTED`, `EMFILE`, `ENFILE`; the synthetic `IsTemporary` marker is a direct structural assertion only. A wrapped marker alone is false; deprecated `Temporary()` alone is false. No Windows errno substitutions or broadened retries.
 - Root classifier regression cases were added and observed passing before production relocation. Existing root retry and close/backoff tests stay in place. Independent internal tests cover direct/wrapped timeout, non-timeout, errno, permanent, closed, deprecated-Temporary and direct-marker cases.
 - The existing close/backoff test does not synchronize entry into the timer select; its passing result is not deterministic timer-entry proof. Strengthening lifecycle tests is deferred, not silently bundled here.
-- No subsequent roadmap block has been implemented. No module, fixture, keylog, wire or exported definition changes belong to this checkpoint.
+- At block 1 no subsequent roadmap block had been implemented. Later landed blocks and the current resume point are recorded below. No module, fixture, keylog, wire or exported definition changes belong to this checkpoint.
 
 ### Observed local validation
 
@@ -49,7 +49,22 @@ Go 1.26.5 Windows results are not minimum-line Go 1.25.x or Linux/macOS executio
 
 The protocol document's final **Implementation constraints and application responsibilities** appendix describes `ErrorMessage` (`0x09`) as `code:u16 little-endian || context:utf8`. In [messages.go](../../messages.go), `ErrorMessage.MarshalBinary` calls `marshalTextMessage`, which writes the two-byte LE code and, for non-empty context, a `textTLVType` TLV via `NewTLV`/`MarshalBinary`; `unmarshalTextMessage` decodes that TLV. Empty context is just the two code bytes. Thus raw UTF-8 appendix wording does not describe the implemented non-empty payload representation. Resolve normative intent, existing vectors/tests and compatibility in a separate wire/documentation review; do not change encoding or silently bless the discrepancy in this reorganization.
 
-## Resume with block 2 only
+## Block 2 landed: send and queue cohesion
+
+`connection_send.go` contains 14 unchanged functions: `Send`, `TrySend`, `SendContext`, `SendPaddedContext`, `SendAndWait`, `SendPaddedAndWait`, `enqueue`, `enqueueControl`, `enqueueChannel`, `SendPadded`, `writeLoop`, `complete`, `failPending`, `writeMessage`. All files remain `package dgproto`. Central exported definitions, private channel item types, sentinels and constructor remain in `connection.go`; white-box tests are untouched. Shared `operationContext` stays with the reader/handler runtime, since both read and write use it. No queue, cancellation, rekey, lock, buffer or completion behavior changed.
+
+Fresh block 2 checks on Go 1.26.5 windows/amd64, CGO enabled, `DGPROTO_KEYLOG` unset:
+
+- Before and after: `go test -run 'Test.*(Send|Queue|Shutdown|Close|Rekey)' -count=1 ./...` PASS, exit 0 (root 1.401 s / 1.400 s).
+- `go test -count=1 ./...` PASS, exit 0 (root 2.163 s).
+- `go test -tags dgproto_keylog -count=1 ./...` PASS, exit 0 (root 2.190 s).
+- `go vet ./...`, `gofmt -l .`, `git diff --check` PASS, exit 0; no vet/format diagnostics. Only changed Go files were formatted.
+- Temporary Go parser validation compared the sorted complete non-import declaration source slices, including declaration comments and bodies: all 42 declarations across the connection files exactly match pre-block HEAD (normalized CRLF only). This covers exported type definitions/representation, methods/signatures, constructor, private types, sentinels and unmoved functions; no aliases or interfaces introduced.
+- Fresh `go test -race -count=1 ./...` BLOCKED, exit 1 at external linking, no tests executed: configured Zig cannot resolve `WaitOnAddress`, `WakeByAddressSingle`, `WakeByAddressAll`. Compiler discovery found only Zig among available gcc/clang/zig commands; no system or dependency changes made. This same environmental limitation applies to the subsequent mechanical moves; race safety is not claimed. Minimum Go 1.25.x and Linux/macOS execution remain unavailable locally.
+
+Next executable block: move only `defaultKeepaliveTimeout`, `beginPing`, `clearPing`, `acknowledgePing`, `consumePingAcknowledgement`, `maintenanceLoop`, `noteActivity`, `resetTimer` into root `connection_keepalive.go`, preserving source bodies/comments and timer/state/lock ownership. Keep reader and handler in `connection.go`. Establish fresh `Test.*(Keepalive|Ping|Idle|Send|Queue|Shutdown|Close|Rekey)` baseline, then repeat focused/default/tagged/vet/format/diff/equivalence gates and a separate local commit. Block 4 follows only after that commit and clean-status recheck. Discover actual checkpoint hashes using Git history, not an embedded self-hash.
+
+## Historical block 2 preparation (superseded by landed checkpoint)
 
 1. Re-read applicable `AGENTS.md` (including any newly added nested guides), its Git/security rules, this checkpoint, `connection.go`, callers, and root send/shutdown tests. Recheck `git branch --show-current`, `git status --short --branch`, `git --no-pager diff`, `git --no-pager diff --cached`, and `git log -1 -- docs/architecture/package-layout.md`; do not trust this session's clean state or test results.
 2. Establish fresh focused baseline checks. In one subsequent commit, move only the cohesive send/queue method implementations: `Send`, `TrySend`, contextual/padded/write-wait variants, `enqueue`, `enqueueControl`, `enqueueChannel`, `writeLoop`, `writeMessage`, `complete`, and `failPending` into root `connection_send.go` with `package dgproto`. Keep `Connection`, configs, `queuedMessage`, `closeRequest`, sentinels and white-box tests at root. Keep lifecycle, handler, maintenance and read-loop implementations in place. Re-evaluate this exact method list against the current source before editing.
