@@ -131,9 +131,17 @@ func NewConnection(transport *TCPTransport, session *Session, config ConnectionC
 }
 
 // Start begins the connection runtime until ctx or the connection ends.
-// It has no effect after Close.
+// It has no effect after Close. A pre-canceled context stops the connection
+// synchronously without starting runtime loops or dispatching queued work.
 func (c *Connection) Start(ctx context.Context) {
 	c.startOnce.Do(func() {
+		if err := ctx.Err(); err != nil {
+			// This startOnce owner has no loops to join and owns Done. Do not
+			// enter closeGracefully here: it also acquires startOnce.
+			c.shutdown(err)
+			close(c.done)
+			return
+		}
 		c.started.Store(true)
 		c.wg.Go(c.readLoop)
 		c.wg.Go(c.writeLoop)
