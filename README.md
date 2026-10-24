@@ -1,5 +1,7 @@
 <div align="center">
 
+<a href="https://github.com/datagram-messenger"><img src="docs/assets/datagram-logo-dark.svg" width="96" height="96" alt="Datagram Messenger" /></a>
+
 # dgproto-go
 
 **Go implementation of the DGProto v1 wire protocol and secure session runtime.**
