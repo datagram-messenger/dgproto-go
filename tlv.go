@@ -85,10 +85,11 @@ func DecodeTLVs(data []byte, maxBytes int) ([]TLV, error) {
 		return nil, fmt.Errorf("%w: got %d bytes, limit %d", ErrTLVDecodeLimit, len(data), maxBytes)
 	}
 
-	capacity := min(len(data)/4, MaxTLVElements)
-	out := make([]TLV, 0, capacity)
+	// Count validated fields before allocating descriptors. Wire bytes are
+	// not a useful estimate of field count for a single large value.
+	count := 0
 	for offset := 0; offset < len(data); {
-		if len(out) == MaxTLVElements {
+		if count == MaxTLVElements {
 			return nil, fmt.Errorf("%w: limit %d", ErrTLVElementLimit, MaxTLVElements)
 		}
 		remaining := len(data) - offset
@@ -105,12 +106,18 @@ func DecodeTLVs(data []byte, maxBytes int) ([]TLV, error) {
 		if paddingLen > remaining-unpadded {
 			return nil, fmt.Errorf("%w at offset %d: padding needs %d bytes, got %d", ErrTLVTruncated, offset, paddingLen, remaining-unpadded)
 		}
-		encoded := unpadded + paddingLen
-		out = append(out, TLV{
-			Type:  data[offset],
-			Value: append([]byte(nil), data[offset+TLVHeaderSize:offset+unpadded]...),
-		})
-		offset += encoded
+		count++
+		offset += unpadded + paddingLen
+	}
+
+	out := make([]TLV, count)
+	for i, offset := 0, 0; i < count; i++ {
+		// The first pass validated every boundary; caller input must not be
+		// concurrently mutated, just as with the original single-pass parser.
+		valueLen := int(binary.LittleEndian.Uint16(data[offset+1 : offset+TLVHeaderSize]))
+		end := offset + TLVHeaderSize + valueLen
+		out[i] = TLV{Type: data[offset], Value: append([]byte(nil), data[offset+TLVHeaderSize:end]...)}
+		offset += align4(TLVHeaderSize + valueLen)
 	}
 	return out, nil
 }
