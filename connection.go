@@ -144,6 +144,9 @@ func (c *Connection) Start(ctx context.Context) {
 		go func() {
 			select {
 			case <-ctx.Done():
+				// Record cancellation before the peer can observe SessionClose and
+				// close the transport, racing readLoop to publish EOF first.
+				c.recordTerminal(ctx.Err())
 				_ = c.closeGracefully(SessionClose{Code: 0, Reason: "context canceled"}, ctx.Err())
 			case <-c.ctx.Done():
 			}
