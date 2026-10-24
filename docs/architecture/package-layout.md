@@ -10,7 +10,7 @@ The root `dgproto` package remains the public API and owns its exported definiti
 |---|---|---|
 | 1 (landed) | Extract the stateless accept-error classifier to `internal/acceptpolicy`; retain the root wrapper and runtime tests. | Direct/wrapped regression parity and default/tagged package checks. |
 | 2 (landed, separate commit) | Root-only connection send/queue implementation split into `connection_send.go`; types and white-box tests stay at root. | Preserve enqueue, cancellation, writer/rekey ordering, completion and shutdown contracts. |
-| 3 (future, separate commit) | Root-only keepalive/maintenance split into `connection_keepalive.go`. | Preserve timer reset, ping acknowledgement, idle timeout and cancellation behavior with focused liveness tests and race execution. |
+| 3 (landed, separate commit) | Root-only keepalive/maintenance split into `connection_keepalive.go`. | Preserve timer reset, ping acknowledgement, idle timeout and cancellation behavior with focused liveness tests and race execution. |
 | 4 (future, separate commit) | Root-only lifecycle split into `connection_lifecycle.go`. | Preserve start/close/abort ownership, first cause, handler completion and server wait boundaries. |
 | 5 (reassessment, not promised extraction) | Reconsider real internal seams only after root cohesion improves. | Prove a one-way dependency graph and explicit state/buffer ownership; reject alias facades and speculative abstractions. |
 
@@ -62,9 +62,24 @@ Fresh block 2 checks on Go 1.26.5 windows/amd64, CGO enabled, `DGPROTO_KEYLOG` u
 - Temporary Go parser validation compared the sorted complete non-import declaration source slices, including declaration comments and bodies: all 42 declarations across the connection files exactly match pre-block HEAD (normalized CRLF only). This covers exported type definitions/representation, methods/signatures, constructor, private types, sentinels and unmoved functions; no aliases or interfaces introduced.
 - Fresh `go test -race -count=1 ./...` BLOCKED, exit 1 at external linking, no tests executed: configured Zig cannot resolve `WaitOnAddress`, `WakeByAddressSingle`, `WakeByAddressAll`. Compiler discovery found only Zig among available gcc/clang/zig commands; no system or dependency changes made. This same environmental limitation applies to the subsequent mechanical moves; race safety is not claimed. Minimum Go 1.25.x and Linux/macOS execution remain unavailable locally.
 
-Next executable block: move only `defaultKeepaliveTimeout`, `beginPing`, `clearPing`, `acknowledgePing`, `consumePingAcknowledgement`, `maintenanceLoop`, `noteActivity`, `resetTimer` into root `connection_keepalive.go`, preserving source bodies/comments and timer/state/lock ownership. Keep reader and handler in `connection.go`. Establish fresh `Test.*(Keepalive|Ping|Idle|Send|Queue|Shutdown|Close|Rekey)` baseline, then repeat focused/default/tagged/vet/format/diff/equivalence gates and a separate local commit. Block 4 follows only after that commit and clean-status recheck. Discover actual checkpoint hashes using Git history, not an embedded self-hash.
+Block 2's proposed keepalive boundary was implemented in block 3 below. Discover actual checkpoint hashes using Git history, not an embedded self-hash.
 
-## Historical block 2 preparation (superseded by landed checkpoint)
+## Block 3 landed: keepalive and maintenance cohesion
+
+`connection_keepalive.go` contains 8 unchanged functions: `defaultKeepaliveTimeout`, `beginPing`, `clearPing`, `acknowledgePing`, `consumePingAcknowledgement`, `maintenanceLoop`, `noteActivity`, `resetTimer`. The overflow-safe default moves with its timer policy; constructor/config declarations stay central. The reader still authenticates and forwards Ping/Pong handling, while maintenance owns timer sequencing. Ping state, atomics, locks, channels, ACK-before-enqueue retention, rollover, retry and deadline behavior are unchanged. Tests remain at root.
+
+Fresh block 3 checks, same toolchain/platform and environment as block 2:
+
+- Before/after: `go test -run 'Test.*(Keepalive|Ping|Idle|Send|Queue|Shutdown|Close|Rekey)' -count=1 ./...` PASS, exit 0 (root 1.848 s / 1.869 s), including authenticated ACK burst, immediate reply, enqueue interleaving, queue-pressure retry and state-boundary tests.
+- `go test -count=1 ./...` PASS, exit 0 (root 2.250 s).
+- `go test -tags dgproto_keylog -count=1 ./...` PASS, exit 0 (root 2.202 s).
+- `go vet ./...`, `gofmt -l .`, `git diff --check` PASS, exit 0; no diagnostics. Only `connection.go` and the new keepalive file formatted.
+- Temporary parser/source-slice equivalence PASS: all 42 non-import connection declarations, bodies and declaration comments unchanged vs pre-block HEAD; public definition identity and representation unchanged.
+- Race not rerun: the fresh block 2 attempt failed externally before tests on the unchanged Zig toolchain (three missing Windows address-wakeup symbols above). Race execution and minimum-line/other-OS evidence remain required elsewhere, not claimed passes.
+
+Next executable block 4: move only `Start`, `Close`, `Done`, `Err`, `closeGracefully`, `shutdown`, `recordTerminal`, `abort` into root `connection_lifecycle.go`. Keep central declarations/constructor and `readLoop`, `handlerLoop`, `callHandlerBounded`, `callHandler`, shared `operationContext` in `connection.go`: receiving/dispatch and handler bounds are distinct responsibilities and need no additional move to preserve lifecycle ownership. Baseline and post-move selector: `Test.*(Start|Close|Shutdown|Handler|Disconnect|Admission|Send|Queue|Rekey|Keepalive|Ping|Idle|Abort|Handoff|Terminal|Lifecycle)`. Repeat default/tagged/vet/format/diff/parser-equivalence gates, full exact-path staged review and a separate commit, then clean-state recheck. Do not redesign callbacks, cancellation, first cause, queue disposal or Done ownership.
+
+## Historical block 2 preparation (superseded by landed checkpoints)
 
 1. Re-read applicable `AGENTS.md` (including any newly added nested guides), its Git/security rules, this checkpoint, `connection.go`, callers, and root send/shutdown tests. Recheck `git branch --show-current`, `git status --short --branch`, `git --no-pager diff`, `git --no-pager diff --cached`, and `git log -1 -- docs/architecture/package-layout.md`; do not trust this session's clean state or test results.
 2. Establish fresh focused baseline checks. In one subsequent commit, move only the cohesive send/queue method implementations: `Send`, `TrySend`, contextual/padded/write-wait variants, `enqueue`, `enqueueControl`, `enqueueChannel`, `writeLoop`, `writeMessage`, `complete`, and `failPending` into root `connection_send.go` with `package dgproto`. Keep `Connection`, configs, `queuedMessage`, `closeRequest`, sentinels and white-box tests at root. Keep lifecycle, handler, maintenance and read-loop implementations in place. Re-evaluate this exact method list against the current source before editing.

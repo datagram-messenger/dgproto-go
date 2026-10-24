@@ -22,7 +22,7 @@ When sources conflict, identify the exact discrepancy and evidence. Do not treat
 | Noise handshake and AEAD | `handshake.go`, `crypto.go`; matching tests, `mvp_constraints_test.go` |
 | Session, replay, directional rekey | `session.go`, `replay.go`, `rekey.go`; matching tests, `rekey_state_test.go`, `session_transport_edge_cases_test.go` |
 | TCP establishment and I/O | `client.go`, `transport.go`, `tcp.go`; `client_*_test.go`, `tcp_test.go` |
-| Runtime, queues, admission, shutdown | `connection.go` (definitions, reader, handler, maintenance, lifecycle), `connection_send.go` (send/queue/writer), `server.go`; matching tests, `send_api_test.go`, `send_shutdown_property_test.go`, `connection_start_close_test.go` |
+| Runtime, queues, admission, shutdown | `connection.go` (definitions, reader, handler, lifecycle), `connection_send.go` (send/queue/writer), `connection_keepalive.go` (maintenance/timers/ping ACK), `server.go`; matching tests, `send_api_test.go`, `send_shutdown_property_test.go`, `connection_start_close_test.go` |
 | Optional traffic-secret logging | `keylog.go`, `keylog_disabled.go`, keylog tests |
 | Deterministic fixtures and performance | `testdata/vectors/`, `wire_vectors_test.go`, `benchmark_test.go`, TLV benchmark tests |
 
