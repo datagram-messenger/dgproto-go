@@ -8,7 +8,9 @@ This document describes the Go implementation. The [protocol specification](../p
 - `crypto.go`: ChaCha20-Poly1305, nonce formation, and authenticated encryption.
 - `handshake.go`: Noise XX handshake state and key derivation.
 - `client.go`: required-pin TCP dial and bounded establishment; returns a stopped caller-owned runtime with identity metadata and no traffic secrets.
-- `session.go`, `rekey.go`, `replay.go`: epochs, directional keys, rekey transitions, and replay windows.
+- `session.go`: central secrets/state/construction/close, atomic receive/replay/rekey transitions and shared typed codec dispatch.
+- `session_send.go`: send serialization, sequence allocation and pending send-rekey transaction/commit.
+- `rekey.go`, `replay.go`: rekey policy/confirmation and replay windows.
 - `transport.go`, `tcp.go`: frame transport and TCP framing (no outer length prefix; body length is derived from the fixed header).
 - `connection.go`: central connection/config/error declarations, constructor, and shared operation contexts.
 - `connection_receive.go`: receive/control routing, serial handler dispatch, bounded shutdown wait and panic containment.
