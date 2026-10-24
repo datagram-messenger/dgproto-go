@@ -2,6 +2,8 @@
 
 This is an architecture plan, not a release checklist or a compatibility certification. Read the [runtime overview](overview.md), [repository guide](../../AGENTS.md), [public package overview](../../doc.go), and [protocol specification](../protocol/dgproto-v1.md) together.
 
+The authoritative resume point is **Current checkpoint: block 8 landed, session receive and final reassessment** below. All older checkpoints and proposed scopes are historical evidence, not instructions to repeat landed work.
+
 ## Boundaries and staged roadmap
 
 The root `dgproto` package remains the public API and owns its exported definitions. File size alone does not justify a new package. Prefer cohesive root files before inventing interfaces or moving state across ownership boundaries.
@@ -15,7 +17,7 @@ The root `dgproto` package remains the public API and owns its exported definiti
 | 5 (landed, separate commit) | Root-only responder establishment split into `server_handshake.go`; client shares the root frame validator. | Exact four-declaration relocation, handshake/ownership baseline and post/full/tagged checks. |
 | 6 (landed, separate commit) | Root-only connection receive and handler dispatch into `connection_receive.go`. | Preserve control routing, queue/cancellation, bounded handler and terminal ownership; exact declaration equivalence. |
 | 7 (landed, separate commit) | Root-only session outbound/rekey transaction into `session_send.go`. | Preserve complete send declarations, state/lock/sequence/ownership and rekey ordering; parser and focused/full/tagged gates. |
-| 8 (proposed, not implemented) | Cohesive root-only session receive transaction into `session_receive.go`. | Keep atomic candidate/decrypt/replay/rekey/grace work together; exact declarations and targeted/full/tagged gates, no public/state/package moves. |
+| 8 (landed) | Cohesive root-only session receive transaction into `session_receive.go`. | All six declarations exact; focused/default/tagged/vet/parity passed; supported race remains blocked externally, not passed. |
 | Later reassessment | Reconsider real internal seams only after root cohesion improves. | Prove a one-way dependency graph and explicit state/buffer ownership; reject alias facades and speculative abstractions. |
 
 `ReplayWindow` is public: moving its definition or substituting an alias risks public type identity, representation and white-box state assumptions. It is not a reason to expose a new internal state type. TLV, headers, frames and typed messages are also public and carry copy/alias, field layout, byte encoding and error contracts; a wire package would require a separately reviewed compatibility design, not a mechanical move. `Session`, replay and rekey share locking and atomic receive transitions: authentication failure must not advance replay, malformed ordinary authenticated messages consume sequence, and rekey validation/key/epoch/replay/grace updates must remain atomic. Keep them together now. Preserve root sentinels and `errors.Is`/`errors.As`, public identity/representation, defaults, reachable-buffer ownership, queue bounds and cancellation semantics in every block. No new public types, aliases, dependencies, crypto algorithms or wire changes are part of this roadmap.
@@ -98,7 +100,7 @@ Fresh block 4 validation on the same Go 1.26.5 Windows toolchain:
 
 Each landed block has its own focused baseline, post-move/full/tagged checks and exact-path staged review before a separate local commit. Check actual hashes with `git log -3 --oneline` and actual status/diffs before resuming; do not trust cached state. No push, tag, release or release-note/candidate artifacts are part of these blocks. Earlier wire appendix and nondeterministic close/backoff test findings remain deferred as documented above.
 
-## Current checkpoint: block 5 landed, server establishment cohesion
+## Historical checkpoint: block 5 landed, server establishment cohesion
 
 Freshly verified `refactor/internal-packages` at `6cc4bf8fb3f2bc1abbcd30d3687baa05dfee2ce7`, clean tracked/untracked status and empty full staged/unstaged diffs before editing. Full repository guide and checkpoint, implementation, callers, relevant tests and handshake specification inspected. Exactly `(*Server).performHandshake`, `validateHandshakeFrame`, `isClientAllowed`, `hmacEqual` moved to `server_handshake.go`, still `package dgproto`; its only imports are `context` and `fmt`. All original `server.go` imports remain necessary. The validator is the same root function called by the client, with no wrapper, alias or new abstraction. Server/config/errors/constructor/Serve/handleConn/admission/disconnect/slots/register/handoff/Close/Abort/backoff remain in `server.go`. No tests, dependencies, API, wire, security policy, algorithms, locking or behavior changed. The known ErrorMessage appendix discrepancy remains deferred.
 
@@ -111,7 +113,7 @@ Observed fresh validation, Go 1.26.5 windows/amd64, CGO enabled, `DGPROTO_KEYLOG
 - Temporary Go parser checks before and after PASS: sorted multiset of all 247 complete non-import root production declarations equals pre-block HEAD, including doc comments, bodies, signatures, types and sentinels; CRLF is the only source normalization. Additional exact-scope check verifies precisely the four named functions in the new root file and none remaining in `server.go`. Temporary checker lives outside the repository and is removed before completion.
 - Race deliberately not retried without a new supported compiler: the fresh prior Zig Windows linker failure (`WaitOnAddress`, `WakeByAddressSingle`, `WakeByAddressAll`) prevented test execution, and no installed gcc/clang alternative was found. This is deferred supported `go test -race -count=1 ./...` evidence, not a race pass. Minimum-line Go 1.25.x execution on Windows/Linux/macOS, Linux supported race and other configured CI gates remain required elsewhere; local newer-Go Windows checks do not substitute for them. No push/tag/release or release-note/candidate files.
 
-## Current checkpoint: block 6 landed, connection receive cohesion
+## Historical checkpoint: block 6 landed, connection receive cohesion
 
 Started from freshly verified clean `refactor/internal-packages` at `8d9b31653790aa0b86e4ee4654763dfebc48d76d`; full staged/unstaged diffs empty. Moved exactly `(*Connection).readLoop`, `handlerLoop`, `callHandlerBounded` (complete explanatory comment), `callHandler` into root `connection_receive.go`, importing only `fmt`, `time`. Central types/errors/constructor/shared `operationContext` stay in `connection.go`, which loses only unused `fmt`. Queue leases, control routing, cancellation rechecks, bounded detachment, panic containment and shutdown semantics are unchanged. No tests rewritten.
 
@@ -124,9 +126,9 @@ Fresh Go 1.26.5 windows/amd64, CGO 1, configured `zig cc`; compiler discovery st
 - Temporary parser: all 247 complete non-import root production declarations identical as a sorted multiset to pre-block HEAD and cumulative original `74846e9d47b635ca0d6bf8e7ad81e4c968b22746`, including comments/bodies/types/signatures, CRLF-only normalization. Build-tag files byte-unchanged; exact new-file four-function scope and absence from central file checked.
 - Race not rerun on unchanged environment: previous fresh Zig Windows link failure prevented execution (missing `WaitOnAddress`, `WakeByAddressSingle`, `WakeByAddressAll`). Supported race and minimum Go 1.25.x Windows/Linux/macOS execution remain external requirements, not passes. No fuzz campaign/benchmark needed or run for unchanged-source relocation. No push/tag/release or release-note/candidate documents.
 
-Maps updated; exact five-path full/staged review precedes the separate local commit. Discover its hash in Git history. Continue immediately with the authorized session outbound block described below; require fresh HEAD/status/full diffs and its own baseline/post/full/tagged/vet/format/parser checks and separate commit. No third block is authorized in this invocation.
+Historical block 6 maps and exact five-path full/staged review preceded its separate local commit. Its then-next session outbound scope subsequently landed in block 7; it is not the current continuation point.
 
-## Current checkpoint: block 7 landed, session outbound cohesion
+## Historical checkpoint: block 7 landed, session outbound cohesion
 
 After block 6's separate local commit `31655a85dee7ce3ea9c174b47c6c20086e21c681`, freshly verified branch/HEAD, clean status and empty full diffs. Moved exactly `(*Session).Send`, `SendPayload`, `sendPayload`, `MarkRekeySent`, `encryptLocked`, `rekeyDueLocked`, `startRekeyLocked`, `sameRekeyFrame` into root `session_send.go`, importing only `fmt`, `math`. Complete declaration comments and source unchanged. `Session`, `HandshakeSecrets`, `pendingSendRekey`, sentinels/constructors/close, receive candidate/transitions and shared dispatch remain central. All original imports remain needed, including `math` in `prepareRekeyLocked`. No wire/state/lock/sequence/key/padding/ownership/rekey changes; no tests rewritten, new abstractions or dependencies.
 
@@ -142,13 +144,58 @@ Observed fresh checks on the same Go 1.26.5 Windows/amd64 CGO-enabled toolchain,
 
 Exact five-path full/staged content review and whitespace checks precede this separate local commit; discover its hash in Git history. No push/tag/release, release-note/candidate files or third source block. Temporary parser lives outside the repository and is removed before completion.
 
-### Read-only reassessment and next explicit block (not implemented)
+## Current checkpoint: block 8 landed, session receive and final reassessment
 
-`connection.go` is now central definitions/constructor/shared context (134 lines); `connection_receive.go` is one cohesive reader/control/handler unit (127 lines). Existing send/lifecycle/keepalive files need no further subdivision. `session.go` is 397 lines, `session_send.go` 152 lines. The remaining receive transaction is roughly 174 comment/source lines and more cohesive than subdividing the 480-line typed-message registry into small families. Session receive already has an explicit candidate/check/commit/grace boundary, whereas typed messages share constants/sentinels, duplicate-TLV validation and the close/error text-TLV codec; family moves need a separate full public type/comment/codec review.
+Started from freshly verified clean `refactor/internal-packages` at `5c9000c34e62e192ce1df7c50e73031f8461b6a3`, with empty full staged/unstaged diffs. Full repository guide and checkpoint read; no nested guides found. Moved exactly five `*Session` methods (`Receive`, `ReceivePayload`, `decryptEpochLocked`, `prepareRekeyLocked`, `expireGraceLocked`) and the private `receiveCandidate` struct to root `session_receive.go`. Complete comments, signatures and bodies are unchanged. Imports there are exactly `crypto/hmac`, `errors`, `fmt`, `math`, `time`; central `session.go` loses only proven-unused `crypto/hmac` and `math`. Public/state/pending types, errors, constructors, Close/Closed and shared message dispatch remain central. Authentication, replay, epoch/key/rekey/grace commit and lock ownership remain together. No tests, API, dependencies, algorithms, crypto or wire changes.
 
-Recommended future block, only with further authorization: move exactly `(*Session).Receive`, `ReceivePayload`, `receiveCandidate`, `decryptEpochLocked`, `prepareRekeyLocked`, `expireGraceLocked` together into root `session_receive.go`. Its imports should be `crypto/hmac`, `errors`, `fmt`, `math`, `time` as actually needed. Keep exported definitions/state, secrets/pending send state, constructors/close and shared `validSessionMessageType`, `outboundMessage`, `newInboundMessage` in `session.go`; remove only imports proven unused there (`crypto/hmac`, `math` after the complete receive move). Do not separate atomic replay/candidate/epoch/key/grace work or introduce a package/interface. Preserve authentication failure vs malformed ordinary sequence consumption, invalid-rekey atomicity, previous-epoch rejection and grace expiration. Baseline/post `go test -run 'Test.*(Session|Rekey|Connection|Send|Queue|Shutdown|Close)' -count=1 ./...`, actual JSON/conformance prefix tests, full uncached default/keylog, vet/format/diff/staged/parser equivalence and explicit supported-race/minimum-platform requirements; separately reviewed local commit. No implementation of this next block occurred here.
+### Current observed checks (earlier block evidence below/above is historical)
 
-Before resuming: full guides/checkpoint, fresh branch/HEAD/status/full diffs, exact declaration inventory/comments/callers/tests, and no trust in cached state. Final clean state and committed source receive a further read-only check after the second commit.
+Go 1.26.5 windows/amd64, CGO 1, CC `zig cc`, ordinary `DGPROTO_KEYLOG` unset. Actual test names verified with `go test -list`, including replay token/boundary tests, rejected-rekey atomicity, authentication failure, malformed authenticated message consumption and all requested conformance prefixes.
+
+| Check | Observed result |
+|---|---|
+| Baseline/post `go test -run 'Test.*(Session\|Rekey\|Replay\|Send\|Queue\|Shutdown\|Close)' -count=1 ./...` | PASS; root 1.434 s / 1.377 s. |
+| Baseline/post `go test -run 'TestJSONWireVectors\|TestWIRE\|TestHS\|TestSESS\|TestP0' -count=1 ./...` | PASS; root 1.221 s / 1.185 s. |
+| `go test -count=1 ./...` | PASS exit 0; root 2.240 s, internal 0.518 s. |
+| `go test -tags dgproto_keylog -count=1 ./...` | PASS exit 0; root 2.217 s, internal 0.292 s. |
+| `go vet ./...` and `go vet -tags dgproto_keylog ./...` | PASS exit 0; no diagnostics. |
+| `gofmt -l .`, `git diff --check` | PASS exit 0; no format filenames/whitespace errors; gofmt writes only the two changed source files. |
+| Strict temporary Go parser before/after | PASS: sorted multiset of all 247 complete non-import root production declarations exactly equals pre-block HEAD and original `74846e9d47b635ca0d6bf8e7ad81e4c968b22746`; only CRLF normalization. Comments, bodies, signatures, source types and sentinels included, duplicates/missing declarations rejected. Exact six-declaration destination and absence centrally verified. |
+| Keylog bytes | All four existing keylog production/tag/test files byte-identical to both baselines; no normalization for this check. |
+| `go list -f '{{.ImportPath}} {{.Imports}}' ./...` | Exactly root plus `internal/acceptpolicy`; leaf imports only `errors net syscall`, no root dependency. |
+
+Post-check command chain completed with explicit exit-0 marker. Baselines additionally rerun from an isolated archive of pre-block HEAD: both completed with explicit return codes `[0, 0]` (root 1.408 s / 1.263 s); temporary snapshot removed. Document links/fences verified. Full/staged review and staged whitespace checks are required before the one exact-path local commit. The temporary parser is outside the repository and removed before completion; discover this checkpoint's own hash through Git history rather than embedding a self-hash.
+
+Supported race remains **NOT PASS**: unchanged compiler discovery finds only Zig, no gcc/clang. The previously observed external-link failure on `WaitOnAddress`, `WakeByAddressSingle`, `WakeByAddressAll` prevented race test execution. Do not repeat the unavailable gate without a changed environment; supported `go test -race -count=1 ./...`, minimum-line security-patched Go 1.25.x Windows/Linux/macOS and Linux race remain external requirements. No fuzz campaigns or benchmarks performed or needed for pure unchanged-source relocation; no interoperability, security/dependency scan or deployment certification claims. ErrorMessage appendix/implementation mismatch and nondeterministic backoff-test entry evidence remain deferred, not repaired.
+
+### Final layout and improvement
+
+Parser-observed root inventory: **24 production Go files, 171 functions, 247 non-import declarations**, including both keylog build variants; 63 root Go files including tests. Original refactor baseline has 17 production files, so file count increased by seven cohesive root splits. Directory boundaries define Go packages: this is improved navigation within `dgproto`, not seven internal package extractions. `internal/acceptpolicy` remains the only true stateless leaf. Other directories are guides/assets/protocol, workflows and deterministic fixtures, not production packages.
+
+| Root unit | LF-normalized lines / functions | Current responsibility |
+|---|---|---|
+| `connection.go` | 134 / 2 | Definitions, constructor, shared operation context. |
+| `connection_send.go` | 193 / 14 | Queue admission, writer/rekey ordering, completion/disposal. |
+| `connection_keepalive.go` | 152 / 8 | Timers, ping ACK and activity policy. |
+| `connection_lifecycle.go` | 150 / 8 | Start, close, terminal cause and completion ownership. |
+| `connection_receive.go` | 127 / 4 | Reader/control routing and bounded serial handler. |
+| `session.go` | 220 / 9 (pre-block 397 lines) | Real central types/state/errors, construction/close/shared codec dispatch. |
+| `session_send.go` | 152 / 8 | Complete outbound/rekey transaction. |
+| `session_receive.go` | 184 / 5 plus private candidate type | Complete authentication/replay/epoch/rekey/grace transaction. |
+| `server.go`, `server_handshake.go` | 453 / 15; 101 / 4 | Central runtime ownership and responder establishment respectively. |
+| `messages.go` | 480 / 23 | Typed families and shared validation/text codec. |
+| `client.go`, `tcp.go`, `transport.go` | 174 / 4; 177 / 7; 34 / 0 | Dial ownership, framed I/O with cancellation/deadlines, interfaces/errors. |
+
+Connection central code fell from the historical 256-line pre-receive unit to 134 lines; Session central code from 543 lines before directional splits to 220. The receive split removes 175 complete declaration/comment lines plus two imports centrally; destination imports account for added navigation overhead. Existing root tests/white-box state stay intact. Do not subdivide these completed transaction files merely to reduce line counts.
+
+### Next optional boundaries (not implemented; stop after this commit)
+
+1. **Recommended next mechanical scope: handshake message family.** If continuing after fresh reassessment, move only `NoisePattern` and its XX/IK constant declaration, `HandshakeInit`, `HandshakeResponse`, `HandshakeFinish`, and all six corresponding MarshalBinary/UnmarshalBinary methods (complete comments and real root definitions) into root `messages_handshake.go`. Keep shared fixed-size constants/errors and all other families/helpers in `messages.go`; no aliases or internal package. This removes an approximately 130-line cohesive three-flight wrapper family, larger and more defensible than one-helper files. Inventory exact AST declarations first; type/field/comment identity and copy/length/alignment checks must remain byte-source equivalent. Keep EncryptedData with duplicate-TLV validation and SessionClose/ErrorMessage with their shared text codec for now. Require focused message/handshake/client/server/vector/conformance baseline and post checks, uncached default/keylog, both vet configurations, format/diff/staged and whole-root declaration/keylog-byte parity; supported race/platform status explicit. This is a possible separate block, not work done here.
+2. **Deferred larger ownership boundary: server runtime.** `handleConn`, `callAdmission`, `callDisconnect`, slot helpers, handshake registration/worker reservation and connection registration/atomic handoff form a substantial server-owned cluster. A later root `server_runtime.go` could group them, but only after reviewing `Serve`, `beginShutdown`, Close/Abort together: all share `mu`, `wg`, slot leases and callback ownership. Moving just handleConn or creating an internal server facade obscures these invariants. Keep types/config/errors/constructor and shared shutdown coordination root; require admission/handoff/worker reservation/slot release/shutdown tests and supported race evidence for any nonmechanical ownership change. Prefer the message-family relocation before this higher-risk boundary.
+
+Transport lane acquisition, watchContext cancellation-worker join/deadline reset and transportError are only a small cohesive group within 177-line `tcp.go`; moving them now adds files without a meaningful ownership gain. An internal wire/codec package is also deferred: public Header/Frame/TLV/message definitions, errors and mutable-buffer ownership require a compatibility/dependency design, not aliases or invented interfaces. No extra package exists solely for appearance.
+
+Resume from the latest clean committed HEAD, reread full guides and this **current** section, inspect full staged/unstaged diffs and exact scope. All eight roadmap blocks are landed; earlier plans and validation below/above are historical, not current instructions to redo session send/receive. No push/tag/release or release-note/candidate files; no second source block in this invocation.
 
 ## Historical block 5 read-only reassessment and executable boundaries (superseded by current checkpoint)
 
