@@ -75,10 +75,8 @@ func (t TLV) MarshalBinary() ([]byte, error) {
 //
 // Alignment padding bytes (0–3 bytes after each TLV value, rounding the
 // encoded length up to a 4-byte boundary) are intentionally not zero-checked.
-// The spec (§3.4) states they "MUST be treated as opaque/ignored by parsers
-// (they exist purely for alignment, not for data)." Accepting non-zero padding
-// on decode is therefore correct behaviour, not a conformance gap
-// (DGP-031-09, closed not-a-defect).
+// The normative spec (§2.4) requires parsers to ignore alignment padding.
+// This is distinct from authenticated random frame padding (§3.3).
 func DecodeTLVs(data []byte, maxBytes int) ([]TLV, error) {
 	if len(data) > MaxTLVSequenceSize {
 		return nil, fmt.Errorf("%w: got %d bytes, limit %d", ErrTLVSequenceLimit, len(data), MaxTLVSequenceSize)
@@ -135,13 +133,15 @@ func EncodeTLVs(fields []TLV) ([]byte, error) {
 		total += n
 	}
 
-	buf := make([]byte, 0, total)
+	buf := make([]byte, total)
+	offset := 0
 	for _, field := range fields {
-		encoded, err := field.MarshalBinary()
-		if err != nil {
-			return nil, err
-		}
-		buf = append(buf, encoded...)
+		// The first pass validated every value and the complete sequence.
+		// The owned zeroed output also supplies alignment padding.
+		buf[offset] = field.Type
+		binary.LittleEndian.PutUint16(buf[offset+1:offset+TLVHeaderSize], uint16(len(field.Value)))
+		copy(buf[offset+TLVHeaderSize:], field.Value)
+		offset += align4(TLVHeaderSize + len(field.Value))
 	}
 	return buf, nil
 }
