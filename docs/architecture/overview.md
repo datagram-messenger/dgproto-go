@@ -4,7 +4,9 @@ This document describes the Go implementation. The [protocol specification](../p
 
 ## File map
 
-- `header.go`, `frame.go`, `tlv.go`, `messages.go`: headers, frame validation, TLVs, and typed messages.
+- `header.go`, `frame.go`, `tlv.go`: headers, frame validation and TLVs.
+- `messages.go`: shared message sizes/errors and application/control message families with shared TLV/text validation.
+- `messages_handshake.go`: real root NoisePattern and three-flight wrapper definitions/codecs; `messages_handshake_test.go` checks external concrete identity, errors and final-flight ownership/rejection.
 - `crypto.go`: ChaCha20-Poly1305, nonce formation, and authenticated encryption.
 - `handshake.go`: Noise XX handshake state and key derivation.
 - `client.go`: required-pin TCP dial and bounded establishment; returns a stopped caller-owned runtime with identity metadata and no traffic secrets.
@@ -21,6 +23,10 @@ This document describes the Go implementation. The [protocol specification](../p
 - `server.go`: central server/config/error definitions, listener, limits, admission/disconnect, handoff and shutdown.
 - `server_handshake.go`: responder establishment, authenticated allowlist and handshake-frame validation shared with the client; root symbols and wire behavior unchanged.
 - `internal/acceptpolicy/errors.go`: stateless accept-error classification; the server retains backoff and lifecycle ownership.
+
+## Package direction and development
+
+The root public package owns concrete wire/message/replay types, error sentinels and session/runtime state. Its only internal dependency is the stateless `internal/acceptpolicy` leaf, which imports only the standard library and never root. Cohesive root files are source organization, not alias facades or separate packages: the handshake wrapper family stays root-owned to preserve public identity, method sets, error wrapping and buffer ownership. Session authentication/replay/rekey commits and lifecycle locks remain together. Follow [test placement and contribution guidance](../../.github/CONTRIBUTING.md#where-to-add-code-and-tests) when adding code; this layout does not certify production readiness.
 
 ## Send and rekey flow
 

@@ -2,7 +2,27 @@
 
 This is an architecture plan, not a release checklist or a compatibility certification. Read the [runtime overview](overview.md), [repository guide](../../AGENTS.md), [public package overview](../../doc.go), and [protocol specification](../protocol/dgproto-v1.md) together.
 
-The authoritative resume point is **Current checkpoint: block 8 landed, session receive and final reassessment** below. All older checkpoints and proposed scopes are historical evidence, not instructions to repeat landed work.
+The authoritative resume point is **Current checkpoint: block 9 implemented, handshake message family** below. Older checkpoints and proposed scopes are historical evidence, not instructions to repeat completed work.
+
+## Current checkpoint: block 9 implemented, handshake message family
+
+Continued from clean `refactor/internal-packages` at `c7d9cbe`. Implemented the previously recommended cohesive root source boundary: moved NoisePattern, its XX/IK constant group, all three handshake wrapper structs and their six methods (11 complete declarations) from `messages.go` to `messages_handshake.go`. The new file imports only `fmt`; shared sizes/error sentinels and application/control families stay in `messages.go`. No alias facade, new internal package, state transfer, module dependency, wire, crypto or keylog change. This is source/test organization within the public library, not an application/server hierarchy.
+
+Fresh graph inspection still finds exactly root → `internal/acceptpolicy` → standard library; root also uses Noise and x/crypto. Public wire/message/replay definitions and sentinels must retain root concrete identity and representation. Moving coupled runtime/session state internally would either change that identity or require a speculative facade/interfaces across locks and atomic epoch/replay transitions. The handshake family instead has a real navigation boundary without changing ownership. The prior block-8 inventory below is historical; `messages.go` now loses 125 lines and the new cohesive wrapper file has 128 lines.
+
+Added external-package `messages_handshake_test.go`: compile-time binary codec method-set checks, reflection of root concrete type identity (rejects internal aliases), sentinel/wrapped `errors.Is`/`errors.As` behavior, and final-flight copy ownership plus every invalid truncated length/one-byte excess and unchanged destination on rejection. Existing mixed message tests, deterministic vectors, conformance, handshake/client/server integration and keylog tests remain intact. Add wrapper code/tests in this family; keep cross-family vector/fuzz tests at root. See the updated [contribution guide](../../.github/CONTRIBUTING.md#where-to-add-code-and-tests) for public/internal dependency direction and test placement.
+
+Observed locally on Go 1.26.5 windows/amd64, CGO_ENABLED=1, CC=`zig cc`:
+
+- Fresh `go test -count=1 ./...` baseline PASS (root 2.185 s, internal 0.539 s).
+- Baseline/post `go test -run "Test.*(Handshake|Message|Client|Server)|TestJSONWireVectors|TestWIRE|TestHS|TestSESS|TestP0" -count=1 ./...` PASS (root 1.329 s / 1.308 s); actual selected names listed before editing.
+- Post `go test -count=1 ./...` PASS (root 2.244 s); `go test -tags dgproto_keylog -count=1 ./...` PASS (root 2.184 s).
+- `go vet ./...`, `go vet -tags dgproto_keylog ./...`, `gofmt -l .`, `git diff --check` PASS with no diagnostics/filenames; only changed Go files formatted. Final staged diff remains empty; relative file links, new contribution anchors and Markdown fence balance checked.
+- Temporary Go parser/source-slice multiset check PASS: all 247 complete non-import production declarations including comments, bodies, type/field definitions and sentinels identical to HEAD after CRLF normalization; exact 11-declaration destination. Module files and keylog files unchanged. The checker is outside the repository, not a shipped utility.
+
+Race execution remains unavailable, not PASS: fresh discovery still finds only Zig, no gcc/clang; the prior observed Windows external-link failure on WaitOnAddress/WakeByAddressSingle/WakeByAddressAll is unchanged, so the unavailable gate was not retried. Supported Linux race and security-patched minimum Go 1.25.x Linux/Windows/macOS execution remain external requirements. No fuzz campaign, benchmark, dependency upgrade/scan, independent interoperability or production certification is claimed. No exported alias/type wiring changed, so a separate local-replace consumer smoke is not required; external-package tests exercise the public import/method/type/error contracts.
+
+This checkpoint is an uncommitted working-tree change: no staging, commit, push, reset, clean or release artifacts are authorized. Resume by freshly reading guides, status/diffs and current code; do not repeat block 9 or follow historical commit/staging instructions below. Further extraction requires its own cohesive ownership/dependency justification, not file-count goals.
 
 ## Boundaries and staged roadmap
 
@@ -144,7 +164,7 @@ Observed fresh checks on the same Go 1.26.5 Windows/amd64 CGO-enabled toolchain,
 
 Exact five-path full/staged content review and whitespace checks precede this separate local commit; discover its hash in Git history. No push/tag/release, release-note/candidate files or third source block. Temporary parser lives outside the repository and is removed before completion.
 
-## Current checkpoint: block 8 landed, session receive and final reassessment
+## Historical block 8 checkpoint: session receive and reassessment (superseded by block 9)
 
 Started from freshly verified clean `refactor/internal-packages` at `5c9000c34e62e192ce1df7c50e73031f8461b6a3`, with empty full staged/unstaged diffs. Full repository guide and checkpoint read; no nested guides found. Moved exactly five `*Session` methods (`Receive`, `ReceivePayload`, `decryptEpochLocked`, `prepareRekeyLocked`, `expireGraceLocked`) and the private `receiveCandidate` struct to root `session_receive.go`. Complete comments, signatures and bodies are unchanged. Imports there are exactly `crypto/hmac`, `errors`, `fmt`, `math`, `time`; central `session.go` loses only proven-unused `crypto/hmac` and `math`. Public/state/pending types, errors, constructors, Close/Closed and shared message dispatch remain central. Authentication, replay, epoch/key/rekey/grace commit and lock ownership remain together. No tests, API, dependencies, algorithms, crypto or wire changes.
 

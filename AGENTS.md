@@ -18,7 +18,7 @@ When sources conflict, identify the exact discrepancy and evidence. Do not treat
 
 | Area | Implementation and starting tests |
 |---|---|
-| Headers, frames, TLV, typed messages | `header.go`, `frame.go`, `tlv.go`, `messages.go`; matching tests, `conformance_test.go`, `parser_fuzz_test.go` |
+| Headers, frames, TLV, typed messages | `header.go`, `frame.go`, `tlv.go`, `messages.go` (shared sizes/errors, application/control families), `messages_handshake.go` (three-flight wrappers and NoisePattern); matching tests, `messages_handshake_test.go` (external public identity/ownership), `conformance_test.go`, `parser_fuzz_test.go` |
 | Noise handshake and AEAD | `handshake.go`, `crypto.go`, `server_handshake.go` (responder establishment, allowlist and root frame validator shared with client); matching tests, `server_test.go`, `client_*_test.go`, `hardening_test.go`, `mvp_constraints_test.go` |
 | Session, replay, directional rekey | `session.go` (central state/construction/close and shared dispatch), `session_send.go` (outbound/rekey transaction), `session_receive.go` (atomic candidate/authentication/replay/rekey/grace transaction), `replay.go`, `rekey.go`; matching tests, `rekey_state_test.go`, `session_transport_edge_cases_test.go` |
 | TCP establishment and I/O | `client.go`, `transport.go`, `tcp.go`; `client_*_test.go`, `tcp_test.go` |
