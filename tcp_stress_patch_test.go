@@ -62,13 +62,11 @@ func TestBoundedTCPConcurrentEcho(t *testing.T) {
 	start := make(chan struct{})
 	results := make(chan error, clients)
 	var workers sync.WaitGroup
-	for i := 0; i < clients; i++ {
-		workers.Add(1)
-		go func() {
-			defer workers.Done()
+	for range clients {
+		workers.Go(func() {
 			<-start
 			results <- boundedEchoClient(ctx, listener.Addr().String(), clientKey, serverKey.Public(), messages)
-		}()
+		})
 	}
 	close(start)
 	joined := make(chan struct{})
@@ -85,7 +83,7 @@ func TestBoundedTCPConcurrentEcho(t *testing.T) {
 		}
 		t.Fatal(ctx.Err())
 	}
-	for i := 0; i < clients; i++ {
+	for range clients {
 		if err := <-results; err != nil {
 			t.Error(err)
 		}
@@ -125,7 +123,7 @@ func boundedEchoClient(ctx context.Context, address string, key StaticKey, serve
 	}()
 	c.Start(ctx)
 	payload := bytes.Repeat([]byte{7}, 4096)
-	for i := 0; i < messages; i++ {
+	for range messages {
 		err = c.SendPaddedAndWait(ctx, EncryptedData{StreamID: 1, AppMessageType: 1, Fields: []TLV{{Type: 1, Value: payload}}}, 16)
 		if err != nil {
 			return err
