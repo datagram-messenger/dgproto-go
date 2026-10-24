@@ -13,7 +13,8 @@ The root `dgproto` package remains the public API and owns its exported definiti
 | 3 (landed, separate commit) | Root-only keepalive/maintenance split into `connection_keepalive.go`. | Preserve timer reset, ping acknowledgement, idle timeout and cancellation behavior with focused liveness tests and race execution. |
 | 4 (landed, separate commit) | Root-only lifecycle split into `connection_lifecycle.go`. | Preserve start/close/abort ownership, first cause, handler completion and server wait boundaries. |
 | 5 (landed, separate commit) | Root-only responder establishment split into `server_handshake.go`; client shares the root frame validator. | Exact four-declaration relocation, handshake/ownership baseline and post/full/tagged checks. |
-| 6 (proposed, not implemented) | Root-only connection receive and handler dispatch into `connection_receive.go`. | Preserve control routing, queue/cancellation, bounded handler and terminal ownership; exact declaration equivalence. |
+| 6 (landed, separate commit) | Root-only connection receive and handler dispatch into `connection_receive.go`. | Preserve control routing, queue/cancellation, bounded handler and terminal ownership; exact declaration equivalence. |
+| 7 (next authorized block) | Root-only session outbound/rekey transaction into `session_send.go`. | Preserve complete send declarations, state/lock/sequence/ownership and rekey ordering; parser and focused/full/tagged gates. |
 | Later reassessment | Reconsider real internal seams only after root cohesion improves. | Prove a one-way dependency graph and explicit state/buffer ownership; reject alias facades and speculative abstractions. |
 
 `ReplayWindow` is public: moving its definition or substituting an alias risks public type identity, representation and white-box state assumptions. It is not a reason to expose a new internal state type. TLV, headers, frames and typed messages are also public and carry copy/alias, field layout, byte encoding and error contracts; a wire package would require a separately reviewed compatibility design, not a mechanical move. `Session`, replay and rekey share locking and atomic receive transitions: authentication failure must not advance replay, malformed ordinary authenticated messages consume sequence, and rekey validation/key/epoch/replay/grace updates must remain atomic. Keep them together now. Preserve root sentinels and `errors.Is`/`errors.As`, public identity/representation, defaults, reachable-buffer ownership, queue bounds and cancellation semantics in every block. No new public types, aliases, dependencies, crypto algorithms or wire changes are part of this roadmap.
@@ -109,7 +110,22 @@ Observed fresh validation, Go 1.26.5 windows/amd64, CGO enabled, `DGPROTO_KEYLOG
 - Temporary Go parser checks before and after PASS: sorted multiset of all 247 complete non-import root production declarations equals pre-block HEAD, including doc comments, bodies, signatures, types and sentinels; CRLF is the only source normalization. Additional exact-scope check verifies precisely the four named functions in the new root file and none remaining in `server.go`. Temporary checker lives outside the repository and is removed before completion.
 - Race deliberately not retried without a new supported compiler: the fresh prior Zig Windows linker failure (`WaitOnAddress`, `WakeByAddressSingle`, `WakeByAddressAll`) prevented test execution, and no installed gcc/clang alternative was found. This is deferred supported `go test -race -count=1 ./...` evidence, not a race pass. Minimum-line Go 1.25.x execution on Windows/Linux/macOS, Linux supported race and other configured CI gates remain required elsewhere; local newer-Go Windows checks do not substitute for them. No push/tag/release or release-note/candidate files.
 
-## Read-only reassessment and executable next boundaries
+## Current checkpoint: block 6 landed, connection receive cohesion
+
+Started from freshly verified clean `refactor/internal-packages` at `8d9b31653790aa0b86e4ee4654763dfebc48d76d`; full staged/unstaged diffs empty. Moved exactly `(*Connection).readLoop`, `handlerLoop`, `callHandlerBounded` (complete explanatory comment), `callHandler` into root `connection_receive.go`, importing only `fmt`, `time`. Central types/errors/constructor/shared `operationContext` stay in `connection.go`, which loses only unused `fmt`. Queue leases, control routing, cancellation rechecks, bounded detachment, panic containment and shutdown semantics are unchanged. No tests rewritten.
+
+Fresh Go 1.26.5 windows/amd64, CGO 1, configured `zig cc`; compiler discovery still finds only Zig, no gcc/clang alternative. `DGPROTO_KEYLOG` remains unset for ordinary checks. Explicit completion markers read:
+
+- Baseline/post `go test -run 'Test.*(Connection|Handler|Queue|Shutdown|Close|Start|Keepalive|Ping|Rekey|Admission|Handoff|Abort)' -count=1 ./...`: PASS exit 0; root 1.965 s / 2.013 s. Actual selected names inspected using `go test -list`.
+- `go test -count=1 ./...`: PASS exit 0; root 2.158 s, internal 0.526 s.
+- `go test -tags dgproto_keylog -count=1 ./...`: PASS exit 0; root 2.193 s, internal 0.282 s.
+- `go vet ./...`, `gofmt -l .`, `git diff --check`: PASS exit 0, no diagnostics/filenames. Formatted only the two changed Go files.
+- Temporary parser: all 247 complete non-import root production declarations identical as a sorted multiset to pre-block HEAD and cumulative original `74846e9d47b635ca0d6bf8e7ad81e4c968b22746`, including comments/bodies/types/signatures, CRLF-only normalization. Build-tag files byte-unchanged; exact new-file four-function scope and absence from central file checked.
+- Race not rerun on unchanged environment: previous fresh Zig Windows link failure prevented execution (missing `WaitOnAddress`, `WakeByAddressSingle`, `WakeByAddressAll`). Supported race and minimum Go 1.25.x Windows/Linux/macOS execution remain external requirements, not passes. No fuzz campaign/benchmark needed or run for unchanged-source relocation. No push/tag/release or release-note/candidate documents.
+
+Maps updated; exact five-path full/staged review precedes the separate local commit. Discover its hash in Git history. Continue immediately with the authorized session outbound block described below; require fresh HEAD/status/full diffs and its own baseline/post/full/tagged/vet/format/parser checks and separate commit. No third block is authorized in this invocation.
+
+## Historical block 5 read-only reassessment and executable boundaries (superseded by current checkpoint)
 
 Source inventory below uses parser-observed LF-normalized bytes/line counts; CRLF checkout bytes may differ. This is browsing/cohesion evidence, not a size threshold for extracting packages.
 

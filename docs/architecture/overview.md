@@ -10,7 +10,8 @@ This document describes the Go implementation. The [protocol specification](../p
 - `client.go`: required-pin TCP dial and bounded establishment; returns a stopped caller-owned runtime with identity metadata and no traffic secrets.
 - `session.go`, `rekey.go`, `replay.go`: epochs, directional keys, rekey transitions, and replay windows.
 - `transport.go`, `tcp.go`: frame transport and TCP framing (no outer length prefix; body length is derived from the fixed header).
-- `connection.go`: central connection/config/error declarations, constructor, reader, handler, and shared operation contexts.
+- `connection.go`: central connection/config/error declarations, constructor, and shared operation contexts.
+- `connection_receive.go`: receive/control routing, serial handler dispatch, bounded shutdown wait and panic containment.
 - `connection_lifecycle.go`: start/close/abort coordination, Done ownership, terminal cause and shutdown.
 - `connection_send.go`: send/queue API, enqueue admission, single writer/rekey ordering, completion and pending disposal.
 - `connection_keepalive.go`: maintenance loop, idle/keepalive timers, timeout default, ping expectation/ACK and activity helpers.
