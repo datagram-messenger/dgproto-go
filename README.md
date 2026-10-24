@@ -140,7 +140,6 @@ The current profile uses `Noise_XX_25519_ChaChaPoly_SHA256` and ChaCha20-Poly130
 | [Architecture](docs/architecture/overview.md) | Framing, rekey flow, replay handling, and concurrency |
 | [Protocol specification](docs/protocol/dgproto-v1.md) | Normative draft wire format and cryptographic state transitions |
 | [Test vectors](testdata/vectors/README.md) | Fixture scope and validation levels, not an interoperability certification |
-| [0.6.0 hardening notes](docs/0.6.0-candidate.md) | Release scope, recorded validation, and remaining gates |
 
 ## Contributing
 
