@@ -64,8 +64,19 @@ jobs:
           CGO_ENABLED: '1'
         run: go test -race -count=1 ./...
 
+      - name: Test with dgproto_keylog build tag
+        run: go test -tags dgproto_keylog -count=1 ./...
+
+      - name: Test with race detector and dgproto_keylog build tag (Linux, CGO)
+        env:
+          CGO_ENABLED: '1'
+        run: go test -race -tags dgproto_keylog -count=1 ./...
+
       - name: Vet
         run: go vet ./...
+
+      - name: Vet with dgproto_keylog build tag
+        run: go vet -tags dgproto_keylog ./...
 
       - name: Check formatting
         shell: bash
