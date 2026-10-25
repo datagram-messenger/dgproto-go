@@ -1,4 +1,4 @@
-// Package wire implements the fixed-size DGProto header byte codec.
+// Package wire implements primitive DGProto header and control-payload byte codecs.
 // It has no protocol-policy, error-sentinel or caller-buffer ownership state.
 package wire
 

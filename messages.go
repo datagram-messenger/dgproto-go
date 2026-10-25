@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"unicode/utf8"
+
+	"github.com/datagram-messenger/dgproto-go/internal/wire"
 )
 
 const (
@@ -16,11 +18,11 @@ const (
 	// HandshakeFinishFixedSize is the 64-byte Noise XX final-flight size.
 	HandshakeFinishFixedSize = 64
 	// PingPongSize is the fixed ping or pong payload size.
-	PingPongSize = 9
+	PingPongSize = wire.PingPongSize
 	// RekeyInitSize is the fixed rekey payload size.
-	RekeyInitSize = 36
+	RekeyInitSize = wire.RekeyInitSize
 	// MaxAckSequences is the largest count representable by the Ack wire field.
-	MaxAckSequences = 255
+	MaxAckSequences = wire.MaxAckSequences
 	// MaxEncryptedPayloadSize excludes the header and 16-byte AEAD tag.
 	MaxEncryptedPayloadSize = MaxFrameSize - HeaderSize - AEADTagSize
 	// MaxHandshakePayloadSize excludes the header; handshakes have no outer tag.
@@ -127,8 +129,7 @@ func (m ResumptionTicket) MarshalBinary() ([]byte, error) {
 		return nil, fmt.Errorf("%w: ticket length %d", ErrResumptionTicket, len(m.Ticket))
 	}
 	buf := make([]byte, len(m.Ticket)+8)
-	copy(buf, m.Ticket)
-	binary.LittleEndian.PutUint64(buf[len(m.Ticket):], m.ValidUntil)
+	wire.PutTicket(buf, m.Ticket, m.ValidUntil)
 	return buf, nil
 }
 
@@ -137,8 +138,8 @@ func (m *ResumptionTicket) UnmarshalBinary(data []byte) error {
 	if len(data) < 9 || len(data) > MaxEncryptedPayloadSize {
 		return fmt.Errorf("%w: payload length %d", ErrResumptionTicket, len(data))
 	}
-	ticketEnd := len(data) - 8
-	*m = ResumptionTicket{Ticket: append([]byte(nil), data[:ticketEnd]...), ValidUntil: binary.LittleEndian.Uint64(data[ticketEnd:])}
+	ticket, validUntil := wire.ReadTicket(data)
+	*m = ResumptionTicket{Ticket: append([]byte(nil), ticket...), ValidUntil: validUntil}
 	return nil
 }
 
@@ -164,10 +165,7 @@ type PingPong struct {
 // MarshalBinary encodes m as the fixed-size ping or pong payload.
 func (m PingPong) MarshalBinary() ([]byte, error) {
 	buf := make([]byte, PingPongSize)
-	if m.IsResponse {
-		buf[0] = 1
-	}
-	binary.LittleEndian.PutUint64(buf[1:], m.Nonce)
+	wire.PutPingPong(buf, m.IsResponse, m.Nonce)
 	return buf, nil
 }
 
@@ -179,7 +177,8 @@ func (m *PingPong) UnmarshalBinary(data []byte) error {
 	if data[0] > 1 {
 		return fmt.Errorf("%w: 0x%02x", ErrInvalidPingResponse, data[0])
 	}
-	*m = PingPong{IsResponse: data[0] == 1, Nonce: binary.LittleEndian.Uint64(data[1:])}
+	response, nonce := wire.ReadPingPong(data)
+	*m = PingPong{IsResponse: response, Nonce: nonce}
 	return nil
 }
 
@@ -194,11 +193,8 @@ func (m Ack) MarshalBinary() ([]byte, error) {
 	if len(m.Sequences) < 1 || len(m.Sequences) > MaxAckSequences {
 		return nil, fmt.Errorf("%w: got %d", ErrAckCount, len(m.Sequences))
 	}
-	buf := make([]byte, 1+8*len(m.Sequences))
-	buf[0] = byte(len(m.Sequences))
-	for i, sequence := range m.Sequences {
-		binary.LittleEndian.PutUint64(buf[1+8*i:], sequence)
-	}
+	buf := make([]byte, wire.AckSize(len(m.Sequences)))
+	wire.PutAck(buf, m.Sequences)
 	return buf, nil
 }
 
@@ -211,13 +207,11 @@ func (m *Ack) UnmarshalBinary(data []byte) error {
 	if count < 1 || count > MaxAckSequences {
 		return fmt.Errorf("%w: got %d", ErrAckCount, count)
 	}
-	if len(data) != 1+8*count {
-		return fmt.Errorf("%w: got %d, want %d", ErrMessageLength, len(data), 1+8*count)
+	if len(data) != wire.AckSize(count) {
+		return fmt.Errorf("%w: got %d, want %d", ErrMessageLength, len(data), wire.AckSize(count))
 	}
 	sequences := make([]uint64, count)
-	for i := range sequences {
-		sequences[i] = binary.LittleEndian.Uint64(data[1+8*i:])
-	}
+	wire.ReadAck(data, sequences)
 	*m = Ack{Sequences: sequences}
 	return nil
 }
@@ -238,8 +232,7 @@ func (m RekeyInit) MarshalBinary() ([]byte, error) {
 		return nil, ErrInvalidEpoch
 	}
 	buf := make([]byte, RekeyInitSize)
-	binary.LittleEndian.PutUint32(buf[:4], m.Epoch)
-	copy(buf[4:], m.KeyConfirm[:])
+	wire.PutRekeyInit(buf, m.Epoch, m.KeyConfirm)
 	return buf, nil
 }
 
@@ -248,12 +241,10 @@ func (m *RekeyInit) UnmarshalBinary(data []byte) error {
 	if len(data) != RekeyInitSize {
 		return fmt.Errorf("%w: got %d, want %d", ErrMessageLength, len(data), RekeyInitSize)
 	}
-	epoch := binary.LittleEndian.Uint32(data[:4])
+	epoch, confirm := wire.ReadRekeyInit(data)
 	if epoch == 0 {
 		return ErrInvalidEpoch
 	}
-	var confirm [32]byte
-	copy(confirm[:], data[4:])
 	*m = RekeyInit{Epoch: epoch, KeyConfirm: confirm}
 	return nil
 }
