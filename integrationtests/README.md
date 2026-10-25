@@ -16,7 +16,11 @@ Run `go test -count=1 ./integrationtests/...` from the repository root. Plain
   application messages. These files import only the public library and the
   standard library. `frame_test.go` owns the complete public frame layout,
   validation/error priority, receive-reserved-field and buffer-ownership suite;
-  select it with `go test -run 'TestFrame|TestNewFrame' -count=1 ./integrationtests/api`. Concrete identity, method sets, current/nil error variables,
+  select it with `go test -run 'TestFrame|TestNewFrame' -count=1 ./integrationtests/api`.
+  `messages_test.go` owns the complete typed-message golden, round-trip/ownership,
+  truncation, text/UTF-8 and handshake-wrapper rejection suite, now enforced through
+  the public import rather than root-package visibility.
+  Concrete identity, method sets, current/nil error variables,
   validation priority, unchanged destinations, buffer ownership and allocation
   budgets are checked without access to private implementation seams. Header and
   control codec benchmarks live with these tests; use
