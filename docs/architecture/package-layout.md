@@ -8,7 +8,29 @@ The [archived chronology](package-layout-history.md) preserves earlier observati
 and proposals; its inventories, "current" headings and next-step recommendations
 are historical, not instructions to implement them.
 
-## Current checkpoint: public consumer contract suite
+## Current checkpoint: optional traffic-secret sink
+
+`internal/keylog/` now owns the complete optional process-wide sink: environment
+lookup, open-once append file, initialization and leaf write lock, and exact
+record formatting. Both implementation and colocated sink tests require
+`dgproto_keylog`; default builds still compile the unchanged root no-ops without
+importing this leaf. Root tagged functions only forward primitive arrays/scalars.
+Session initial-key and committed-rekey call sites, state and locks are unchanged.
+
+This is an independent I/O/debugging responsibility, not a crypto/session split
+or another generic utility package. Existing leaves do not own files or traffic
+logging. All five leaves are stdlib-only and never import root; four participate
+in default builds. No public type, sentinel, dependency or protocol algorithm moves.
+
+Colocated serial tests cover literal synthetic records, append and one-time path
+selection, absent/failed-open no-retry, and 32 concurrent initial-key pairs plus
+epoch writes. Root rekey integration retains its private Session helpers, using
+an isolated subprocess rather than exposing production reset/close hooks; it also
+rejects logging a pending epoch before commit. The default no-write regression
+remains root. Sink test cleanup closes files before removing temporary directories
+on Windows; production still keeps the file open for its process lifetime.
+
+## Previous checkpoint: public consumer contract suite
 
 Local commit `598ca84c2b27d317fc6b778a5d5daec07c3f8dcf` moved the complete
 external facade/codec consumer suite to `integrationtests/api/`: **six unchanged
@@ -29,11 +51,12 @@ selectors, helper ownership and non-parallel sentinel requirements.
 | Bounded TLV arithmetic and byte codec | Stdlib-only `internal/tlv/`, with colocated hostile-input/alignment tests |
 | Replay validation/commit/bitmap algorithm | Stdlib-only `internal/replay/`; public storage and Session locking/transactions remain root |
 | Accept retry classification | Stdlib-only `internal/acceptpolicy/` |
+| Optional process-wide traffic-secret sink | Tagged stdlib-only `internal/keylog/`; root owns session commit decisions and default no-ops |
 | Handshake, Session, Connection and Server state/lifecycle | Root responsibility-oriented files; white-box tests remain root |
 | Public-only framing rejection/EOF/cancellation | `integrationtests/tcp_test.go` |
 | Godoc, vectors, conformance, fuzz and keylog build variants | Existing root examples/tests and unchanged `testdata/` |
 
-All four internal leaves remain stdlib-only and acyclic. The mature public root
+The four default leaves and optional tagged keylog leaf remain stdlib-only and acyclic. The mature public root
 package is intentional: concrete types are not hidden behind aliases, runtime
 ownership is not divided into microscopic packages, and no new interfaces were
 introduced merely to force a move.
