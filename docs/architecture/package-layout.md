@@ -2,9 +2,36 @@
 
 This is an architecture plan, not a release checklist or a compatibility certification. Read the [runtime overview](overview.md), [repository guide](../../AGENTS.md), [public package overview](../../doc.go), and [protocol specification](../protocol/dgproto-v1.md) together.
 
-The authoritative resume point is **Current checkpoint: server worker ownership** below. Older checkpoints and next-step recommendations are historical; their package inventories do not describe the current tree.
+The authoritative resume point is **Current checkpoint: primitive control payload codecs** below. Older checkpoints and next-step recommendations are historical; their package inventories do not describe the current tree.
 
-## Current checkpoint: server worker ownership
+## Current checkpoint: primitive control payload codecs
+
+Audited clean `refactor/internal-packages` at `ed54c67`, including both diffs, recent history, root guide (no nested guides), architecture, existing leaves, message/frame/rekey/crypto code and affected tests. The complete control-payload primitive extraction and coupled regressions are committed as `202782e` (`refactor(wire): colocate primitive control payload codecs`). No push, tag or release is part of this batch.
+
+Selected the existing stdlib-only `internal/wire` leaf for the complete PingPong, Ack, RekeyInit and post-MVP ticket byte layouts in [control.go](../../internal/wire/control.go). This extends a coherent wire-codec responsibility rather than creating another small package or another root file split. Root [messages.go](../../messages.go) still owns concrete types, method sets, validation order, current mutable sentinels, copy/allocation and assignment-on-success. No public aliases, internal descriptors, callbacks, persistent state or dependencies are introduced. Root production file count stays unchanged: fewer files is not worth moving the intentional public definitions or fragmenting ownership. The message implementation loses repeated endian/sequence loops; algorithm tests are colocated in [control_test.go](../../internal/wire/control_test.go).
+
+Alternatives were explicitly inspected: frame body layout is already compact and closely coupled to Header validation and owned slices; nonce/random helpers do not justify a package; AEAD construction depends on the existing non-stdlib cipher dependency; HMAC ratchet/confirmation is short and coupled to epoch policy, with no need for a tiny crypto leaf. TLV/text/application validation would require a broader descriptor/error seam and should be separately justified rather than bundled here. Session receive authentication/replay/rekey/grace and runtime lifecycle remain whole atomic transactions. Handshake wrappers remain root-owned. The historical ErrorMessage specification discrepancy is unchanged; ticket coding does not enable resumption.
+
+Readers/writers require length/count/semantic validation before invocation. Ack reads fill root-allocated owned scalar storage; RekeyInit returns a stack confirmation value; ReadTicket returns a transient borrowed view copied exactly once by root. Primitive short-buffer programmer misuse can panic, but public hostile-input validation still precedes these calls. Public nil receiver behavior and direct returns of even nil replacement sentinels are preserved rather than normalized.
+
+### Observed control-codec validation
+
+Go 1.26.5 windows/amd64, CGO_ENABLED=1, MinGW GCC toolchain; module minimum remains Go 1.25.0. Fresh `go test -count=1 ./...` baseline passed. Pre-extraction `go test -run '^TestControlMessage' -count=1 .` passed for identity, current/nil error chains, unchanged destinations and ownership/allocation regressions. Post-extraction `go test -count=1 ./internal/wire` and `go test -run 'Test.*(ControlMessage|Ping|Ack|Rekey|Resumption)|TestJSONWireVectors|TestWIRE|TestHS|TestSESS|TestP0' -count=1 ./...` passed. Added public nil-receiver and endpoint tests also passed. Full uncached default and `dgproto_keylog` tests, default/tagged vet, empty `gofmt -l .`, unstaged and complete staged diff/whitespace reviews passed. `go list` confirms all four internal leaves still import only stdlib, never root. Primitive tests cover literal little-endian vectors, all 255 Ack counts, suffix preservation/zero overwrite, explicit borrowed ticket view, short-buffer preconditions and zero allocations. Existing root message tests/vectors/conformance remain integration evidence, not moved or weakened.
+
+Matched `go test -run '^$' -bench '^BenchmarkControlMessageBoundary$' -benchmem -benchtime=5s -count=2 .` used the same Go toolchain, Intel Xeon E5-2689 and workloads. Ranges below are ns/op from the final isolated after repeat; these short samples are not statistical certification or service SLO evidence. The first after campaign overlapped full checks and produced a noisy rekey encode sample (93.25 versus 51.71); it was repeated without concurrent checks (120.621 seconds total). Timing differences must not be advertised as proven speedups.
+
+| Workload | Before encode / decode | After encode / decode | Unchanged encode / decode storage |
+|---|---|---|---|
+| Ping | 32.65–32.93 / 4.476–4.661 | 33.20–33.68 / 4.335–4.337 | 16 B, 1 alloc / 0 B, 0 alloc |
+| Ack 255 | 1218–1241 / 1262–1309 | 1044–1067 / 1112–1118 | 2048 B, 1 alloc / 2048 B, 1 alloc |
+| Rekey | 50.88–52.79 / 12.60–12.85 | 49.24–49.64 / 12.36–12.40 | 48 B, 1 alloc / 0 B, 0 alloc |
+| Ticket 1024 | 517.5–540.7 / 450.8–473.5 | 463.4–468.3 / 415.9–444.3 | 1152 B, 1 alloc / 1024 B, 1 alloc |
+
+Actual `go test -run '^$' -fuzz '^FuzzMessageUnmarshalBinary$' -fuzztime=60s -parallel=2 .` passed: 1,344,081 executions, two workers, 62.234 seconds total, no failures. Fresh full `go test -race -count=1 ./...` passed for all six packages after explicitly prepending `C:/msys64/mingw64/bin` to the process PATH. Observed CC/CXX are the MinGW gcc/g++ executables; no global environment or cache changes were made. This is an executed race suite, not a library-only race build. Historical Zig failures below are historical, not the current limitation.
+
+Minimum-Go 1.25.x, Linux/macOS execution, external consumer differential/interoperability and deployment evidence are unavailable locally. No module/dependency changes, fixture regeneration, vulnerability scan or release artifacts. Keep remaining work bounded by architectural responsibility, not counts.
+
+## Historical checkpoint: server worker ownership
 
 Continued from clean `refactor/internal-packages` at `53777dc`. Implementation and coupled regression tests are committed as `5979989` (`refactor(server): group admission and runtime ownership`). No push, tag or release is part of this batch.
 
