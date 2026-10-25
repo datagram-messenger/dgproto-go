@@ -61,6 +61,23 @@ func TestJSONWireVectors(t *testing.T) {
 	}
 }
 
+// TestWIREErrorRawContext selects the normative Error vectors without maintaining
+// a second literal oracle; TestJSONWireVectors also validates the full registry.
+func TestWIREErrorRawContext(t *testing.T) {
+	file := loadWireVectorFile(t, filepath.Join("testdata", "vectors", "messages.json"))
+	count := 0
+	for _, vector := range file.Vectors {
+		if vector.MessageType == nil || *vector.MessageType != uint8(MessageTypeError) {
+			continue
+		}
+		count++
+		t.Run(vector.Name, func(t *testing.T) { verifyWireVector(t, vector) })
+	}
+	if count == 0 {
+		t.Fatal("no normative Error vectors found")
+	}
+}
+
 func loadWireVectorFile(t *testing.T, path string) wireVectorFile {
 	t.Helper()
 	data, err := os.ReadFile(path)
@@ -182,6 +199,7 @@ func parseWireVector(vector wireVector, wire []byte) ([]byte, error) {
 }
 
 var vectorErrors = map[string]error{
+	"ErrMessageTooShort":     ErrMessageTooShort,
 	"ErrHeaderTooShort":      ErrHeaderTooShort,
 	"ErrInvalidMagic":        ErrInvalidMagic,
 	"ErrPaddingFlag":         ErrPaddingFlag,

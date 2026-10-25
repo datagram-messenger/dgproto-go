@@ -290,7 +290,7 @@ func TestTextMessageDuplicateTLVDetectedRegardlessOfOrder(t *testing.T) {
 		1, 0, 0, 0,
 		1, 0, 0, 0,
 	}
-	var message dgproto.ErrorMessage
+	var message dgproto.SessionClose
 	if err := message.UnmarshalBinary(wire); !errors.Is(err, dgproto.ErrDuplicateMessageTLV) {
 		t.Fatalf("duplicate TLV: %v", err)
 	}

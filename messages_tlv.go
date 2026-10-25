@@ -95,26 +95,6 @@ func (m *SessionClose) UnmarshalBinary(data []byte) error {
 	return nil
 }
 
-// ErrorMessage reports a recoverable protocol condition with optional context.
-type ErrorMessage struct {
-	// Code identifies the reported protocol condition.
-	Code uint16
-	// Context is optional UTF-8 diagnostic text.
-	Context string
-}
-
-// MarshalBinary encodes the error code and optional UTF-8 context.
-func (m ErrorMessage) MarshalBinary() ([]byte, error) { return marshalTextMessage(m.Code, m.Context) }
-
-// UnmarshalBinary decodes an error-message payload into m.
-func (m *ErrorMessage) UnmarshalBinary(data []byte) error {
-	code, text, err := unmarshalTextMessage(data)
-	if err == nil {
-		*m = ErrorMessage{Code: code, Context: text}
-	}
-	return err
-}
-
 func marshalTextMessage(code uint16, text string) ([]byte, error) {
 	if !utf8.ValidString(text) {
 		return nil, ErrInvalidUTF8

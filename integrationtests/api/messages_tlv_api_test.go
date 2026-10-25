@@ -14,14 +14,12 @@ import (
 var (
 	_ encoding.BinaryMarshaler   = dgproto.EncryptedData{}
 	_ encoding.BinaryMarshaler   = dgproto.SessionClose{}
-	_ encoding.BinaryMarshaler   = dgproto.ErrorMessage{}
 	_ encoding.BinaryUnmarshaler = (*dgproto.EncryptedData)(nil)
 	_ encoding.BinaryUnmarshaler = (*dgproto.SessionClose)(nil)
-	_ encoding.BinaryUnmarshaler = (*dgproto.ErrorMessage)(nil)
 )
 
 func TestTLVMessagePublicIdentityAndOwnership(t *testing.T) {
-	for _, value := range []any{dgproto.EncryptedData{}, dgproto.SessionClose{}, dgproto.ErrorMessage{}} {
+	for _, value := range []any{dgproto.EncryptedData{}, dgproto.SessionClose{}} {
 		if got := reflect.TypeOf(value).PkgPath(); got != "github.com/datagram-messenger/dgproto-go" {
 			t.Fatalf("%T has package %q", value, got)
 		}
@@ -46,26 +44,18 @@ func TestTLVMessagePublicIdentityAndOwnership(t *testing.T) {
 	if err := data.UnmarshalBinary([]byte{0, 0, 0, 0}); err != nil || data.Fields == nil || len(data.Fields) != 0 {
 		t.Fatalf("empty decoded fields shape: %#v, %v", data.Fields, err)
 	}
-	// This records the existing TLV-backed ErrorMessage implementation, not
-	// conformance to the historical raw-context specification discrepancy.
-	textWire := []byte{0x34, 0x12, 1, 2, 0, 'h', 'i', 0xa5, 0xa5, 0xa5}
-	var report dgproto.ErrorMessage
+	textWire := []byte{3, 0, 1, 2, 0, 'h', 'i', 0xa5, 0xa5, 0xa5}
 	var close dgproto.SessionClose
-	if err := report.UnmarshalBinary(textWire); err != nil {
-		t.Fatal(err)
-	}
-	textWire[0] = 3
-	textWire[1] = 0
 	if err := close.UnmarshalBinary(textWire); err != nil {
 		t.Fatal(err)
 	}
 	textWire[5] = 'x'
-	if report.Code != 0x1234 || report.Context != "hi" || close.Code != 3 || close.Reason != "hi" {
-		t.Fatal("text decode did not own its string")
+	if close.Code != 3 || close.Reason != "hi" {
+		t.Fatal("close decode did not own its string")
 	}
-	encoded, err := report.MarshalBinary()
-	if err != nil || !bytes.Equal(encoded, []byte{0x34, 0x12, 1, 2, 0, 'h', 'i', 0, 0, 0}) {
-		t.Fatalf("existing error encoding: % x, %v", encoded, err)
+	encoded, err := close.MarshalBinary()
+	if err != nil || !bytes.Equal(encoded, []byte{3, 0, 1, 2, 0, 'h', 'i', 0, 0, 0}) {
+		t.Fatalf("unchanged close encoding: % x, %v", encoded, err)
 	}
 }
 
@@ -83,7 +73,6 @@ func TestTLVMessageValidationPriorityAndUnchangedDestination(t *testing.T) {
 		{"text unknown before code", []byte{4, 0, 2, 0, 0, 0}, func() encoding.BinaryUnmarshaler { return &dgproto.SessionClose{Code: 3, Reason: "old"} }, dgproto.ErrUnknownMessageTLV},
 		{"text UTF8 before code", []byte{4, 0, 1, 1, 0, 0xff}, func() encoding.BinaryUnmarshaler { return &dgproto.SessionClose{Code: 3, Reason: "old"} }, dgproto.ErrInvalidUTF8},
 		{"text close code", []byte{4, 0}, func() encoding.BinaryUnmarshaler { return &dgproto.SessionClose{Code: 3, Reason: "old"} }, dgproto.ErrInvalidCloseCode},
-		{"error malformed", []byte{4, 0, 1}, func() encoding.BinaryUnmarshaler { return &dgproto.ErrorMessage{Code: 9, Context: "old"} }, dgproto.ErrTLVTooShort},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			value := tc.newValue()
