@@ -2,9 +2,29 @@
 
 This is an architecture plan, not a release checklist or a compatibility certification. Read the [runtime overview](overview.md), [repository guide](../../AGENTS.md), [public package overview](../../doc.go), and [protocol specification](../protocol/dgproto-v1.md) together.
 
-The authoritative resume point is **Current checkpoint: public network integration layer** below. Older checkpoints and next-step recommendations are historical; their package inventories do not describe the current tree.
+The authoritative resume point is **Current checkpoint: server worker ownership** below. Older checkpoints and next-step recommendations are historical; their package inventories do not describe the current tree.
 
-## Current checkpoint: public network integration layer
+## Current checkpoint: server worker ownership
+
+Continued from clean `refactor/internal-packages` at `53777dc`. Implementation and coupled regression tests are committed as `5979989` (`refactor(server): group admission and runtime ownership`). No push, tag or release is part of this batch.
+
+The audit found `server.go` the largest remaining production unit (453 lines), followed by `messages.go` (355) and `handshake.go` (310). Large root tests are white-box or shared-helper suites, not independent packages to move solely for file counts. Existing `wire`, `tlv`, `replay` and `acceptpolicy` leaves remain stdlib-only and acyclic. A new message-validation leaf would require another ownership/error boundary and performance evidence; small nonce/random helpers do not justify packages. Session receive authentication/replay/rekey and Connection lifecycle remain complete atomic transactions. Public concrete definitions stay in the mature Go convention of a root library package, not aliases to a relocated internal runtime.
+
+Selected a bounded navigation improvement: nine complete unchanged functions move into [server_runtime.go](../../server_runtime.go): `handleConn`, `callAdmission`, `callDisconnect`, `tryAcquire`, `release`, `registerHandshake`, `unregisterHandshake`, `registerConn`, `unregisterConn`. This groups the whole worker/slot/admission/handoff responsibility rather than moving `handleConn` alone. `server.go` retains actual exported definitions, defaults/config validation, accept/backoff and Close/Abort/shutdown snapshot/join. Both files operate on the same Server mutex, maps, channels and wait group; reservation-before-Wait and socket-to-runtime handoff remain atomic under that mutex. No signature, field, sentinel, default, callback ordering, wire or cryptographic algorithm changes.
+
+[server_runtime_test.go](../../server_runtime_test.go) adds deterministic coverage for both serialized handoff/shutdown outcomes, exclusive runtime versus socket snapshots, rejected post-shutdown registration and repeated notification/snapshot behavior. Existing worker-reservation, admission ownership, callback, slot-release and concurrent handoff hardening tests remain intact; assertions were not rewritten to make relocation easier.
+
+### Observed server validation
+
+Go 1.26.5 windows/amd64, CGO_ENABLED=1, CC=`zig cc`; module minimum remains Go 1.25.0. Fresh uncached default baseline passed. Focused baseline and post-move `go test -run "Test.*(Server|Admission|Disconnect|Handoff|Handshake|Slot|Abort|Shutdown|Close)" -count=1 ./...` passed. Post-move uncached `go test -count=1 ./...`, `go test -tags dgproto_keylog -count=1 ./...`, ordinary/tagged vet and ordinary/tagged build passed. `go test -run TestJSONWireVectors -count=1 ./...` passed. `gofmt -l .` was empty; only changed Go files were gofmt-written. Complete staged diff and cached whitespace checks passed before the implementation commit.
+
+A temporary Go parser/source-slice checker compared all 249 root production declarations, including comments and both keylog variants, against the pre-move HEAD as a sorted multiset with only CRLF normalization: exact parity passed. This includes concrete type definitions, signatures, function bodies, constants and sentinels; the new regression test is separate. The checker is outside the module, not a shipped utility.
+
+Fresh `go test -race -count=1 ./...` failed before test execution (exit 1): Zig's Windows external linker cannot resolve `WaitOnAddress`, `WakeByAddressSingle`, `WakeByAddressAll`. No race pass is claimed; supported Linux race and security-patched Go 1.25.x/platform CI remain external gates. Benchmarks and parser fuzz campaigns were not run because this is a declaration-identical root runtime move, not an algorithm/parser extraction. No dependency/module edits, fixture regeneration, vulnerability scan, independent interoperability or deployment certification.
+
+This finishes the substantive bounded server batch. Defer a bounded message-validation leaf until its full error/ownership seam and comparative benchmarks are justified; do not fragment the completed runtime/session transactions or chase file-count reductions. The historical ErrorMessage specification discrepancy remains unchanged.
+
+## Historical checkpoint: public network integration layer
 
 Continued from clean, pushed `77ed860`; the checked test reorganization is committed as `1882905`. The test-only `integrationtests` package imports the public library through an explicit `dgproto` alias and the standard library only. No production implementation, export, dependency, fixture, timeout, ordering or rekey behavior changes.
 
