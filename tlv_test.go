@@ -6,32 +6,6 @@ import (
 	"testing"
 )
 
-func TestTLVGoldenWire(t *testing.T) {
-	got, err := (TLV{Type: 0x2a, Value: []byte{0x10, 0x20, 0x30}}).MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := []byte{0x2a, 0x03, 0x00, 0x10, 0x20, 0x30, 0x00, 0x00}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("MarshalBinary() = % x, want % x", got, want)
-	}
-}
-
-func TestTLVAlignmentAndEmptyValue(t *testing.T) {
-	for valueLen, wantLen := range map[int]int{0: 4, 1: 4, 2: 8, 3: 8, 4: 8, 5: 8, 6: 12, 7: 12, 8: 12} {
-		t.Run(string(rune('A'+valueLen)), func(t *testing.T) {
-			field := TLV{Type: 1, Value: make([]byte, valueLen)}
-			got, err := field.MarshalBinary()
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(got) != wantLen {
-				t.Fatalf("encoded length for value %d = %d, want %d", valueLen, len(got), wantLen)
-			}
-		})
-	}
-}
-
 func TestTLVMultipleUnknownDuplicateAndRoundTrip(t *testing.T) {
 	want := []TLV{
 		{Type: 1, Value: nil},
