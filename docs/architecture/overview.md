@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes the Go implementation. The [protocol specification](../protocol/dgproto-v1.md) is normative for wire behavior. The [package layout](package-layout.md) records the completed current responsibility layout and test ownership; raw Error compatibility and paired rollout/rollback are described in the [migration guide](../guides/error-message-migration.md). The [archived chronology](package-layout-history.md) preserves earlier observations/proposals; its recommendations and inventories are not current guidance.
+This document describes the Go implementation. The [protocol specification](../protocol/dgproto-v1.md) is normative for wire behavior. The [package layout](package-layout.md) records the current responsibility layout and test ownership; raw Error compatibility and paired rollout/rollback are described in the [migration guide](../guides/error-message-migration.md). The [archived chronology](package-layout-history.md) preserves earlier observations/proposals; its recommendations and inventories are not current guidance.
 
 ## File map
 
@@ -13,7 +13,7 @@ This document describes the Go implementation. The [protocol specification](../p
 - `messages_error.go`: root ErrorMessage implements normative `code:u16 LE || context:raw UTF-8`, not TLV, with owned output, unchanged-on-error decode and `MaxErrorContextSize`. `integrationtests/api/messages_error_api_test.go` owns its public contract checks. Nonempty Error is wire-incompatible with the old TLV codec, without negotiation; SessionClose, session cryptography and lifecycle remain unchanged. See the [migration guide](../guides/error-message-migration.md), including Rust's preserved public u8 restriction.
 - `internal/wire/control.go`: complete primitive PingPong, Ack, RekeyInit and post-MVP ticket byte layouts, reusing the existing wire leaf rather than adding a tiny package. `control_test.go` covers literal bytes, all Ack counts, suffix/zero overwrite, borrowed internal ticket views, buffer preconditions and zero primitive allocations. `integrationtests/api/messages_api_test.go` checks concrete identity, method sets, current/nil sentinel chains, error priority, unchanged-on-error/nil-receiver behavior, ownership, boundaries and allocation budgets; vectors/conformance/message fuzz remain root.
 - `messages_handshake.go`: real root NoisePattern and three-flight wrapper definitions/codecs; `integrationtests/api/messages_handshake_test.go` checks external concrete identity, errors and final-flight ownership/rejection. `integrationtests/api/messages_test.go` holds the complete cross-family public golden/round-trip/ownership/truncation/text/wrapper rejection suite; it imports only root and stdlib, with no helper seam.
-- `crypto.go`: ChaCha20-Poly1305, nonce formation, and authenticated encryption.
+- `crypto.go`: ChaCha20-Poly1305, nonce formation, and authenticated encryption. Six independent public Codec tests live in `integrationtests/api/crypto_api_test.go`, without shared helpers. Root `crypto_test.go` retains `TestNonceLayout`, `TestRandomBytes` and `TestCodecAADUsesExactReceivedReservedBytes`; the latter needs `codec.aead`, `nonce` and `header.marshalBinary(false)`. Commit `3d77c923bd8800aba157e25dacb76bdc6a515732` preserved all nine original bodies; this was test-only structural ownership, with no production changes.
 - `static_key.go`: real root StaticKey identity, generation/loading, validation, owned public/Noise key copies and the private loading reader; `static_key_test.go` covers concrete storage identity, copy boundaries and current/nil sentinels.
 - `handshake.go`: complete Noise XX flight state machine, peer authentication and transcript-derived session material; static identity operations live separately without moving runtime state into an internal package.
 - `client.go`: required-pin TCP dial and bounded establishment; returns a stopped caller-owned runtime with identity metadata and no traffic secrets.
@@ -59,7 +59,7 @@ justification. Neither is warranted merely to increase package count.
 
 Root network tests retain injected dialers, private started/key/abort state and
 shared `testTransportFrame` dependencies. TLV maximum-size tests use private
-alignment arithmetic; crypto tests use private nonce/AEAD/AAD/entropy seams.
+alignment arithmetic; the three retained root crypto tests use private nonce/AEAD/AAD/entropy seams, while six public Codec tests belong to `integrationtests/api/`.
 No helpers were duplicated, assertions weakened or private APIs exported for a
 move. Future test work should separate whole helper closures by responsibility,
 not treat necessary public root files or atomic runtime owners as layout defects.
