@@ -33,6 +33,13 @@ variables, restore them on exit, and must not overlap other users in the same te
 process. Keep the control and TLV-message files together: `messageSentinel` is a
 shared local helper, not an exported testing API.
 
+Root Connection suites follow behavioral ownership: `connection_keepalive_test.go`
+for timers/Ping, `connection_receive_test.go` for dispatch/order/handler bounds,
+`connection_lifecycle_test.go` for shutdown/first cause, and `connection_queue_test.go`
+for queue capacity and disposal. `connection_test_helpers_test.go` retains shared
+client/runtime fixtures; specialized start/close, cancellation and send/property
+suites remain separate. Global scheduler and mutable-sentinel tests stay serial.
+
 Root retains godoc examples, white-box session/runtime invariants, shared
 transport helpers used by hardening tests, vectors, conformance, fuzz targets and
 other implementation-adjacent tests. Do not move a network-looking test merely
