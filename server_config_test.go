@@ -8,6 +8,14 @@ import (
 	"time"
 )
 
+func TestHardeningNegativeHandlerShutdownTimeout(t *testing.T) {
+	config := validServerConfig(t)
+	config.HandlerShutdownTimeout = -time.Second
+	if _, err := NewServer(config); err == nil {
+		t.Fatal("negative HandlerShutdownTimeout accepted with valid static key")
+	}
+}
+
 func TestNewServerRejectsInvalidStaticKeyEarly(t *testing.T) {
 	if _, err := NewServer(ServerConfig{}); !errors.Is(err, ErrInvalidStaticKey) {
 		t.Fatalf("zero key error = %v", err)

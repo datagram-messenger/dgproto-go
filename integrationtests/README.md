@@ -33,6 +33,13 @@ variables, restore them on exit, and must not overlap other users in the same te
 process. Keep the control and TLV-message files together: `messageSentinel` is a
 shared local helper, not an exported testing API.
 
+Root Server suites keep complete owners together: `server_handshake_test.go`
+(establishment/allowlist/frame validation), `server_runtime_test.go` (slots,
+reservation/atomic handoff snapshots and stress), `server_accept_test.go`
+(classification/scripted listeners/backoff), `server_shutdown_test.go`
+(Close/stalled handshake/admission socket). Config rejection stays in
+`server_config_test.go`; shared keys/config live in `server_test_helpers_test.go`.
+
 Root Connection suites follow behavioral ownership: `connection_keepalive_test.go`
 for timers/Ping, `connection_receive_test.go` for dispatch/order/handler bounds,
 `connection_lifecycle_test.go` for shutdown/first cause, and `connection_queue_test.go`
