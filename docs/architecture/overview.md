@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes the Go implementation. The [protocol specification](../protocol/dgproto-v1.md) is normative for wire behavior. The [package layout plan](package-layout.md) records the incremental reorganization checkpoint and next scoped block.
+This document describes the Go implementation. The [protocol specification](../protocol/dgproto-v1.md) is normative for wire behavior. The [current package layout](package-layout.md) records implemented boundaries and the authoritative reorganization checkpoint. The [archived chronology](package-layout-history.md) preserves earlier observations/proposals; its recommendations and inventories are not current guidance.
 
 ## File map
 
