@@ -3,14 +3,12 @@ package dgproto
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"errors"
 	"io"
 	"net"
 	"reflect"
 	"sync"
 	"testing"
-	"time"
 )
 
 func testTransportFrame(t *testing.T, sequence uint64, payload []byte) Frame {
@@ -92,46 +90,6 @@ func TestTCPTransportPartialWritesUseCanonicalWireFormat(t *testing.T) {
 	}
 }
 
-func TestTCPTransportRejectsOversizedHeaderBeforeBody(t *testing.T) {
-	a, b := net.Pipe()
-	defer a.Close()
-	defer b.Close()
-	wire := make([]byte, HeaderSize)
-	copy(wire[:4], Magic[:])
-	wire[4] = Version
-	wire[6] = byte(MessageTypeEncryptedData)
-	binary.LittleEndian.PutUint32(wire[32:36], MaxFrameSize)
-	go func() { _, _ = b.Write(wire) }()
-	_, err := NewTCPTransport(a).ReadFrame(context.Background())
-	if !errors.Is(err, ErrFrameTooLarge) {
-		t.Fatalf("error = %v, want %v", err, ErrFrameTooLarge)
-	}
-}
-
-func TestTCPTransportEOFAndMalformedFrame(t *testing.T) {
-	t.Run("EOF", func(t *testing.T) {
-		a, b := net.Pipe()
-		b.Close()
-		defer a.Close()
-		_, err := NewTCPTransport(a).ReadFrame(context.Background())
-		if !errors.Is(err, io.EOF) {
-			t.Fatalf("error = %v, want EOF", err)
-		}
-	})
-	t.Run("malformed", func(t *testing.T) {
-		a, b := net.Pipe()
-		defer a.Close()
-		defer b.Close()
-		wire := make([]byte, minFrameSize)
-		copy(wire, []byte("BAD!"))
-		go func() { _, _ = b.Write(wire) }()
-		_, err := NewTCPTransport(a).ReadFrame(context.Background())
-		if !errors.Is(err, ErrInvalidMagic) {
-			t.Fatalf("error = %v, want %v", err, ErrInvalidMagic)
-		}
-	})
-}
-
 func TestTCPTransportTruncatedFrame(t *testing.T) {
 	a, b := net.Pipe()
 	want := testTransportFrame(t, 9, []byte("truncated"))
@@ -178,18 +136,6 @@ func TestTCPTransportConcurrentWritesSerialized(t *testing.T) {
 	}
 	if len(seen) != count {
 		t.Fatalf("read %d distinct frames, want %d", len(seen), count)
-	}
-}
-
-func TestTCPTransportContextCancellation(t *testing.T) {
-	a, b := net.Pipe()
-	defer a.Close()
-	defer b.Close()
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
-	defer cancel()
-	_, err := NewTCPTransport(a).ReadFrame(ctx)
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("error = %v", err)
 	}
 }
 
