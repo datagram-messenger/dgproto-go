@@ -2,9 +2,17 @@
 
 This is an architecture plan, not a release checklist or a compatibility certification. Read the [runtime overview](overview.md), [repository guide](../../AGENTS.md), [public package overview](../../doc.go), and [protocol specification](../protocol/dgproto-v1.md) together.
 
-The authoritative resume point is **Current checkpoint: typed TLV message responsibility** below. Older checkpoints and next-step recommendations are historical; their package inventories do not describe the current tree.
+The authoritative resume point is **Current checkpoint: public consumer contract suite** below. Older checkpoints and next-step recommendations are historical; their package inventories do not describe the current tree.
 
-## Current checkpoint: typed TLV message responsibility
+## Current checkpoint: public consumer contract suite
+
+Starting from clean `refactor/internal-packages` at `5ac8734282804e6d43f06f89c25164552817d908` (ahead six), the complete external facade/codec consumer suite moved to `integrationtests/api/`: six byte-identical files, 20 top-level tests, two benchmarks and all local helper dependencies (including the shared `messageSentinel`). This is an independently selectable public-contract test layer, not a production package split. Package declarations, explicit public imports, test names, assertions, allocation budgets and non-parallel sentinel restoration are unchanged. The suite covers Header, TLV, ReplayWindow/ReplayToken and all typed handshake/control/application message families.
+
+The helper/import audit rejected moving root network-looking tests: `client_integration_test.go` uses injected `dialContext`, private started/key storage and root shared helpers; `tcp_concurrent_echo_test.go` uses private abort; `tcp_test.go` supplies `testTransportFrame` to root hardening/session tests. Those tests, godoc examples, conformance/vectors, fuzz targets, tagged tests and internal algorithm tests remain where their dependencies belong. No helper duplication, aliases, test-seam exports, new interfaces or production source edits. Root concrete identities, current/nil sentinels, ownership/allocation and validation priority remain covered. Session replay/rekey atomicity and Connection/Server lifecycle/callbacks are untouched. The ErrorMessage raw-context versus optional text-TLV specification discrepancy remains unresolved, not fixed or certified.
+
+See [integration test ownership](../../integrationtests/README.md) and the [current file map](overview.md). Use `go test -count=1 ./integrationtests/...`; root-only `go test` no longer selects the relocated contracts. Full `./...` gates continue to include them.
+
+## Historical checkpoint: typed TLV message responsibility
 
 Continued from clean `refactor/internal-packages` at `41035c57d55c4c30bd1977583874f0a47f9cc38f` (ahead five). Fresh root guide, contribution guidance, architecture checkpoint, implementation, callers, existing tests and the relevant normative message sections were read; both tracked diffs and the index were empty. No nested guides exist. This is one bounded responsibility separation, not a broad migration or a file-count target.
 
@@ -12,7 +20,7 @@ Continued from clean `refactor/internal-packages` at `41035c57d55c4c30bd19775838
 
 All moved type/function/comment source is byte-identical to HEAD after line-ending normalization. The private text identifier retains value 1; shared constants, sentinel declarations, public storage/signatures, validation priority, assignment behavior, copies and nil/empty shapes are unchanged. Existing internal wire/tlv/replay/acceptpolicy leaves remain stdlib-only and acyclic. No Session replay/rekey transaction, Connection lifecycle, dependency or fixture changes.
 
-[messages_tlv_api_test.go](../../messages_tlv_api_test.go) adds **external-package consumer** identity/interface, owned fields/strings, nil/empty shapes, ignored input/zero output TLV padding, multi-invalid validation priority, unchanged destination, current/nil sentinel and nil-receiver regressions. These complement existing root golden/boundary/UTF-8 tests rather than moving or weakening them. The preceding static_key tests are root-package reflection/storage regressions, not external consumer coverage.
+[messages_tlv_api_test.go](../../integrationtests/api/messages_tlv_api_test.go) adds **external-package consumer** identity/interface, owned fields/strings, nil/empty shapes, ignored input/zero output TLV padding, multi-invalid validation priority, unchanged destination, current/nil sentinel and nil-receiver regressions. These complement existing root golden/boundary/UTF-8 tests rather than moving or weakening them. The preceding static_key tests are root-package reflection/storage regressions, not external consumer coverage.
 
 The historical ErrorMessage discrepancy remains explicitly unresolved: the specification's implementation-constraints section says `code:u16 little-endian || context:utf8`, while the current implementation uses the shared optional type-1 aligned text TLV. A literal test records existing implementation bytes only, not normative conformance or a decision to bless that encoding. Resolving it requires a separate compatibility/spec decision.
 
