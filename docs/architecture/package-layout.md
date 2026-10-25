@@ -2,9 +2,23 @@
 
 This is an architecture plan, not a release checklist or a compatibility certification. Read the [runtime overview](overview.md), [repository guide](../../AGENTS.md), [public package overview](../../doc.go), and [protocol specification](../protocol/dgproto-v1.md) together.
 
-The authoritative resume point is **Current checkpoint: fixed-header primitive codec** below. Older checkpoints and next-step recommendations are historical; their package inventories do not describe the current tree.
+The authoritative resume point is **Current checkpoint: public network integration layer** below. Older checkpoints and next-step recommendations are historical; their package inventories do not describe the current tree.
 
-## Current checkpoint: fixed-header primitive codec
+## Current checkpoint: public network integration layer
+
+Continued from clean, pushed `77ed860`; the checked test reorganization is committed as `1882905`. The test-only `integrationtests` package imports the public library through an explicit `dgproto` alias and the standard library only. No production implementation, export, dependency, fixture, timeout, ordering or rekey behavior changes.
+
+Three self-contained declarations move from root `tcp_test.go` to [integrationtests/tcp_test.go](../../integrationtests/tcp_test.go): `TestTCPTransportRejectsOversizedHeaderBeforeBody`, `TestTCPTransportEOFAndMalformedFrame` (both existing subtests), and `TestTCPTransportContextCancellation`. These exercise the real public transport over `net.Pipe`, including rejection without reading a body and actual canceled I/O. Their bodies, names, assertions and constants are preserved apart from public qualification and replacing private `minFrameSize` with the exactly equivalent public `HeaderSize`. There are no helpers to duplicate or root-test dependencies to export. Remaining TCP helpers and their dependent tests stay root because hardening/session tests also use `testTransportFrame`.
+
+The inspected `client_integration_test.go` is white-box despite its filename: it checks `started`, private key storage, injected `dialContext`, close counters and root helpers. `client_failure_test.go`/`client_test.go` likewise depend on private dial/handshake/config seams. `tcp_concurrent_echo_test.go` uses private `Connection.abort` in worker cleanup; replacing it with graceful `Close` or context cancellation would change cleanup/terminal semantics, so it remains root. Existing external `dgproto_test` files are public facade contracts or the executable example, not self-contained network suites to arbitrarily relocate. `client_example_test.go` stays root, with unchanged godoc output and README quick-start links. Internal algorithm tests stay adjacent to their implementations; root white-box, vector/conformance/fuzz and build-tag-specific keylog coverage stays intact. No obsolete editor paths are recreated and the ErrorMessage specification discrepancy remains untouched.
+
+### Observed integration validation
+
+Go 1.26.5 windows/amd64, CGO_ENABLED=1; module minimum remains Go 1.25.0. Exact baseline and moved selectors `^TestTCPTransport(RejectsOversizedHeaderBeforeBody|EOFAndMalformedFrame|ContextCancellation)$` passed uncached, including both EOF/malformed subtests. Baseline and final `go test -count=1 ./...`, default vet/build, `go test -tags dgproto_keylog -count=1 ./...`, tagged vet/build and empty `gofmt -l .` passed. A declaration-content checker confirmed all TCP functions/helpers against `77ed860` with only the two specified normalization rules and no duplicate/dropped declarations. `go list` showed the new test-only package, its public/std-library imports, and root `client_example_test.go` still visible as an external test. Compilation and execution in a separate directory directly verify the public import boundary.
+
+Known unsupported Windows Zig race linking was not retried. Supported Linux race, security-patched minimum-Go and other-platform CI remain external gates; no CI success, independent interoperability or deployment guarantee is claimed. This closes the session's safe tests/docs organization batch; further migration should preserve complete helper closures and white-box assertions rather than rewrite behavior merely to increase moved-file count. Bounded-message abstraction work remains deferred, not a prerequisite or speculative follow-on in this batch.
+
+## Historical checkpoint: fixed-header primitive codec
 
 Continued from clean `refactor/internal-packages` at `25c2af9`; implementation and coupled tests are committed as `178ae8a`.
 

@@ -20,6 +20,7 @@ This document describes the Go implementation. The [protocol specification](../p
 - `replay.go`: public replay types, unchanged value storage, tokens, root sentinels and forwarding methods.
 - `internal/replay/window.go`: replay validation, commit and bitmap shift implementation; `window_test.go` contains the relocated algorithm scenarios. `replay_api_test.go` covers the root facade.
 - `transport.go`, `tcp.go`: frame transport and TCP framing (no outer length prefix; body length is derived from the fixed header).
+- `integrationtests/tcp_test.go`: public-import-only `net.Pipe` integration checks for oversized-header rejection before body I/O, EOF/malformed frames, and read-context cancellation. Run `go test -count=1 ./integrationtests` from the repository root; `go test -count=1 ./...` includes this test-only package. Shared-helper TCP tests and private client/runtime seams remain adjacent to root implementation; runnable `client_example_test.go` remains root for godoc/README.
 - `connection.go`: central connection/config/error declarations, constructor, and shared operation contexts.
 - `connection_receive.go`: receive/control routing, serial handler dispatch, bounded shutdown wait and panic containment.
 - `connection_lifecycle.go`: start/close/abort coordination, Done ownership, terminal cause and shutdown.
