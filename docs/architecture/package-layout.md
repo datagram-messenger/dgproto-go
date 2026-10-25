@@ -2,9 +2,29 @@
 
 This is an architecture plan, not a release checklist or a compatibility certification. Read the [runtime overview](overview.md), [repository guide](../../AGENTS.md), [public package overview](../../doc.go), and [protocol specification](../protocol/dgproto-v1.md) together.
 
-The authoritative resume point is **Current checkpoint: static identity responsibility** below. Older checkpoints and next-step recommendations are historical; their package inventories do not describe the current tree.
+The authoritative resume point is **Current checkpoint: typed TLV message responsibility** below. Older checkpoints and next-step recommendations are historical; their package inventories do not describe the current tree.
 
-## Current checkpoint: static identity responsibility
+## Current checkpoint: typed TLV message responsibility
+
+Continued from clean `refactor/internal-packages` at `41035c57d55c4c30bd1977583874f0a47f9cc38f` (ahead five). Fresh root guide, contribution guidance, architecture checkpoint, implementation, callers, existing tests and the relevant normative message sections were read; both tracked diffs and the index were empty. No nested guides exist. This is one bounded responsibility separation, not a broad migration or a file-count target.
+
+[messages_tlv.go](../../messages_tlv.go) groups the complete TLV-backed typed-message responsibility: real root EncryptedData, SessionClose and ErrorMessage definitions/methods, duplicate-type validation, text TLV identifier and the shared UTF-8/code/text marshal/unmarshal closure. Application fields and protocol text have different unknown-type policies but share uniqueness and the owned root TLV codec; moving that entire dependency closure keeps those policies together. [messages.go](../../messages.go) retains shared sizes/current sentinels and primitive control wrappers; [messages_handshake.go](../../messages_handshake.go) retains the handshake family. Session typed dispatch and Connection control routing continue to use the same concrete types without caller edits. This is root source organization, not aliases or a new internal package. A descriptor/error conversion layer would complicate ownership and mutable-sentinel priority without an independent algorithm benefit, so it is deliberately not introduced.
+
+All moved type/function/comment source is byte-identical to HEAD after line-ending normalization. The private text identifier retains value 1; shared constants, sentinel declarations, public storage/signatures, validation priority, assignment behavior, copies and nil/empty shapes are unchanged. Existing internal wire/tlv/replay/acceptpolicy leaves remain stdlib-only and acyclic. No Session replay/rekey transaction, Connection lifecycle, dependency or fixture changes.
+
+[messages_tlv_api_test.go](../../messages_tlv_api_test.go) adds **external-package consumer** identity/interface, owned fields/strings, nil/empty shapes, ignored input/zero output TLV padding, multi-invalid validation priority, unchanged destination, current/nil sentinel and nil-receiver regressions. These complement existing root golden/boundary/UTF-8 tests rather than moving or weakening them. The preceding static_key tests are root-package reflection/storage regressions, not external consumer coverage.
+
+The historical ErrorMessage discrepancy remains explicitly unresolved: the specification's implementation-constraints section says `code:u16 little-endian || context:utf8`, while the current implementation uses the shared optional type-1 aligned text TLV. A literal test records existing implementation bytes only, not normative conformance or a decision to bless that encoding. Resolving it requires a separate compatibility/spec decision.
+
+### Fresh validation for this step
+
+Go 1.26.5 windows/amd64, CGO_ENABLED=1; minimum remains Go 1.25.0. Pre-move `go test -run '^TestTLVMessage' -count=1 .` passed. Post-move `go test -run 'TestTLVMessage|Test.*(EncryptedData|TextMessage|MalformedMessage|MessageGolden)|TestJSONWireVectors|TestWIRE|TestHS|TestSESS|TestP0' -count=1 ./...` passed (matching tests execute in root; other packages report no selected tests). Fresh `go test -count=1 ./...`, `go vet ./...`, `go test -tags dgproto_keylog -count=1 ./...` and `go vet -tags dgproto_keylog ./...` passed. Full `go test -race -count=1 ./...` passed in all six packages with process-local `C:/msys64/mingw64/bin` PATH; observed CC/CXX are MinGW gcc/g++, and DGPROTO_KEYLOG was unset. Only changed Go files were gofmt-written; `gofmt -l .` and `git diff --check` were empty.
+
+A PowerShell source-slice comparison passed exact relocated definition/body/comment parity. The first import-list template failed due to shell quoting; corrected `go list -f '{{.ImportPath}}: {{.Imports}}' ./internal/...` passed and showed only standard-library imports. No test failures or weakened assertions. Complete staged content and cached whitespace are reviewed before the coupled authorized local commit; no push/tag/release action is authorized here.
+
+Minimum-Go 1.25.x and Linux/macOS execution remain outstanding external gates. Benchmarks and fuzz campaigns were not run for this unchanged-body, unchanged-boundary move; full tests execute fuzz seeds but are not campaigns. No independent interoperability, deployment/security certification or vulnerability scan is claimed. Stop after this coherent step; any future leaf must justify a substantive independent algorithm/ownership seam rather than subdivide these families or runtime atomic state.
+
+## Historical checkpoint: static identity responsibility
 
 Continued on `refactor/internal-packages` from the previous primitive-control checkpoint. Commit review re-read the current root guide and inspected the branch, status, complete tracked diffs and both new files; only the six authorized implementation/test/guide paths were changed, and the index was initially empty. No nested guides exist. This is one coherent local organization step, not another codec migration or a release.
 
