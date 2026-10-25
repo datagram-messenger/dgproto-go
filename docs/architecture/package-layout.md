@@ -2,9 +2,39 @@
 
 This is an architecture plan, not a release checklist or a compatibility certification. Read the [runtime overview](overview.md), [repository guide](../../AGENTS.md), [public package overview](../../doc.go), and [protocol specification](../protocol/dgproto-v1.md) together.
 
-The authoritative resume point is **Current checkpoint: bounded internal TLV codec** below. Older checkpoints and next-step recommendations are historical; their package inventories do not describe the current tree.
+The authoritative resume point is **Current checkpoint: fixed-header primitive codec** below. Older checkpoints and next-step recommendations are historical; their package inventories do not describe the current tree.
 
-## Current checkpoint: bounded internal TLV codec
+## Current checkpoint: fixed-header primitive codec
+
+Continued from clean `refactor/internal-packages` at `25c2af9`; implementation and coupled tests are committed as `178ae8a`.
+
+```text
+dgproto (public concrete API, validation, copies, runtime ownership)
+  -> internal/wire         -> encoding/binary
+  -> internal/tlv          -> encoding/binary, fmt
+  -> internal/replay       -> errors
+  -> internal/acceptpolicy -> errors, net, syscall
+```
+
+`internal/wire/header.go` owns the complete 40-byte fixed-header little-endian pack/unpack and normative header/version/tag/frame-size constants. Its transient primitive Header includes the caller-supplied magic octets and retains every reserved byte and unknown flag/type. This is a whole codec, not an endian-helper bucket. Root `header.go` remains the real concrete Header/Flags/MessageType API with identical fields, methods, constant types/values, mutable Magic and writable error variables. Root retains all semantic validation and exact priority/diagnostics, checks length/current Magic/version before primitive decode, and assigns the public destination only after receive validation. Primitive functions require a full header buffer and return no borrowed storage; root conversions are stack values, not aliases, embedded storage, unsafe casts, interfaces or callbacks.
+
+`frame.go`, TCP framing, crypto/AAD, session locks and runtime production files are untouched. Sender reserved flags/bytes remain strictly rejected, while receivers retain exact authenticated octets. No outer length prefix, 40-byte header/65535-byte total-frame contract, handshake tag exception, zero/default fields, nil-receiver/error behavior or ownership changes are introduced. Public constants now reference the leaf constants without changing their types or values. No dependency, module, fixture or specification changes occur; the historical ErrorMessage discrepancy stays deferred.
+
+### Observed fixed-header validation and resource evidence
+
+Go 1.26.5 windows/amd64, CGO_ENABLED=1, CC=`zig cc`; minimum Go remains 1.25.0. Baseline and final focused header/frame/vector/conformance/handshake/session selectors passed. Final uncached ordinary and `dgproto_keylog` full tests, ordinary/tagged vet, build, empty `gofmt -l .`, and unstaged/staged diff checks passed. `internal/wire/header_test.go` covers literal golden bytes, every offset at all 256 octet values, zero overwrites, suffix preservation, short-buffer preconditions and zero primitive allocations. External-package `header_api_test.go` covers concrete identity/field shape, marshaler method compatibility, current Magic, replacement/nil sentinels with exact text/priority, nil receiver panic boundary, copies and allocation budgets. `header_wire_test.go` checks every received offset/value against exact AAD re-encoding and unchanged-on-error storage; existing crypto reserved-byte tamper, padding AAD, vectors, conformance and frame ownership tests remain integration gates.
+
+An isolated local-replace consumer ran the public API regressions, tests and vet, then compared baseline/current Header and Frame across 30,301 hostile/truncated/every-octet wire cases and 157,456 header cases spanning all message types, padding endpoints, uint32/frame length boundaries, sequence boundaries, reserved fields and current Magic. Values, encoded bytes/capacities/nil shape, exact error text and sentinel classification agreed. Its uniquely created temporary module was removed. This is differential Go implementation evidence, not independent interoperability.
+
+Matched public benchmarks used `go test -run "^$" -bench "BenchmarkHeaderBoundary" -benchmem -benchtime=1s -count=3`: encode baseline 71.78–74.12 ns/op, final 79.85–80.80; decode baseline 26.15–27.95 ns/op, final 41.82–41.95. The small transient representation has a measurable CPU cost, explicitly accepted for a coherent safe boundary rather than hidden as a speedup. Allocation/storage budgets are unchanged: encode 1 allocation/48 B (returned len/cap 40), decode 0 allocations/0 B; both primitive functions inline and buffers do not escape on this toolchain. Timing samples are not statistical performance certification or service SLO evidence.
+
+Real two-worker campaigns passed: `FuzzHeaderUnmarshalBinary` 60 seconds, 1,374,821 executions (61.575 seconds total); `FuzzFrameUnmarshalBinary` 30 seconds, 564,343 executions (31.603 seconds total), no failures. Only subsequent test assertions changed before the implementation commit, not production. Known unsupported Windows Zig race linking was not retried; supported Linux race and security-patched minimum-Go/platform CI remain external gates. No release, deployment or independent interoperability claim is made.
+
+### Next sequential candidates
+
+Review a complete bounded text/TLV-backed message validation responsibility, preserving public message ownership/current sentinels and the deferred ErrorMessage spec discrepancy. Avoid scalar nonce/random helper packages or duplicate persistent representations merely to increase package count. Session authentication/replay/rekey transactions and runtime lifecycle/handshake lock ownership stay together. Continue only with focused baseline/differential/allocation evidence and promptly committed coherent steps.
+
+## Historical checkpoint: bounded internal TLV codec
 
 Continued from clean `refactor/internal-packages` at `e8d5231`; implementation and coupled tests are committed as `07b85b9`.
 
