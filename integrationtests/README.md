@@ -25,8 +25,15 @@ Run `go test -count=1 ./integrationtests/...` from the repository root. Plain
   budgets are checked without access to private implementation seams. Header and
   control codec benchmarks live with these tests; use
   `go test -run '^$' -bench 'Benchmark(HeaderBoundary|ControlMessageBoundary)' -benchmem ./integrationtests/api`.
-- `tcp_test.go`: public-only oversized-header, EOF/malformed-frame and cancellation
-  probes using `net.Pipe`.
+- `tcp_test.go`: unchanged public-only oversized-header, EOF/malformed-frame and
+  cancellation probes using `net.Pipe`.
+- `tcp_stream_test.go`: fragmented/coalesced reads, canonical partial writes,
+  truncation and serialized concurrent writes; `shortConn` and `framedBytes`
+  remain with this complete stream closure.
+- `tcp_cancellation_test.go`: lane cancellation and stale-deadline isolation,
+  with `gatedIOConn` and `observingContext` synchronization fixtures.
+  `tcp_helpers_test.go` contains public frame construction and bounded waits.
+  Run `go test -count=1 -run 'TestTCPTransport|TestNewTCPTransport|TestHardeningTCP' ./integrationtests`.
 
 Keep mutable-sentinel tests non-parallel: they intentionally replace public
 variables, restore them on exit, and must not overlap other users in the same test
@@ -48,7 +55,8 @@ client/runtime fixtures; specialized start/close, cancellation and send/property
 suites remain separate. Global scheduler and mutable-sentinel tests stay serial.
 
 Root retains godoc examples, white-box session/runtime invariants, shared
-transport helpers used by hardening tests, vectors, conformance, fuzz targets and
+`tcp_test_helpers_test.go` fixtures for white-box consumers and nil Connection
+misuse in root `tcp_test.go`, vectors, conformance, fuzz targets and
 other implementation-adjacent tests. Do not move a network-looking test merely
 because of its name: injected dialers, private state and shared helpers are real
 boundaries. Internal algorithm tests remain beside their stdlib-only leaves.
