@@ -12,9 +12,11 @@ fuzz-campaign, sustained-benchmark, vulnerability or interoperability evidence.
 Run `go test -count=1 ./integrationtests/...` from the repository root. Plain
 `go test` at root does not run these packages.
 
-- `api/`: consumer contracts for Header, TLV, replay and typed handshake/control/
-  application messages. All six files import only the public library and the
-  standard library. Concrete identity, method sets, current/nil error variables,
+- `api/`: consumer contracts for Header, Frame, TLV, replay and typed handshake/control/
+  application messages. These files import only the public library and the
+  standard library. `frame_test.go` owns the complete public frame layout,
+  validation/error priority, receive-reserved-field and buffer-ownership suite;
+  select it with `go test -run 'TestFrame|TestNewFrame' -count=1 ./integrationtests/api`. Concrete identity, method sets, current/nil error variables,
   validation priority, unchanged destinations, buffer ownership and allocation
   budgets are checked without access to private implementation seams. Header and
   control codec benchmarks live with these tests; use
