@@ -8,7 +8,23 @@ The [archived chronology](package-layout-history.md) preserves earlier observati
 and proposals; its inventories, "current" headings and next-step recommendations
 are historical, not instructions to implement them.
 
-## Current checkpoint: optional traffic-secret sink
+## Current checkpoint: completed responsibility layout
+
+The current layout is complete for this refactor: root `dgproto` imports
+`internal/wire`, `internal/tlv`, `internal/replay` and `internal/acceptpolicy`
+in default builds, and also `internal/keylog` with `dgproto_keylog`. Each leaf
+imports only stdlib, never root. Root retains public concrete identity, current
+mutable Magic/error variables, validation/copies and atomic session/runtime state.
+`server_config.go`, `static_key.go`, the message variants and Session/Connection
+file splits organize responsibilities within root; they are not new packages.
+
+Stop cosmetic extraction here. Another package needs an independent cohesive
+owner, a complete helper/validation closure and meaningful tests, with evidence
+that the boundary preserves contracts and justifies adaptation/performance cost.
+File length or package count alone is not a reason to split TCP lanes, handshake,
+Session transactions or Connection/Server lifecycle.
+
+### Optional traffic-secret sink
 
 `internal/keylog/` now owns the complete optional process-wide sink: environment
 lookup, open-once append file, initialization and leaf write lock, and exact
@@ -30,18 +46,14 @@ rejects logging a pending epoch before commit. The default no-write regression
 remains root. Sink test cleanup closes files before removing temporary directories
 on Windows; production still keeps the file open for its process lifetime.
 
-## Previous checkpoint: public consumer contract suite
+## Current ownership
 
-Local commit `598ca84c2b27d317fc6b778a5d5daec07c3f8dcf` moved the complete
-external facade/codec consumer suite to `integrationtests/api/`: **six unchanged
-files, 894 lines, 20 top-level tests and two benchmarks**, including their complete
-helper closure. Package declarations remain `dgproto_test`; imports still use the
-public module. No production source was changed. The 251-entry global inventory
-of tests, benchmarks, fuzz targets and godoc examples was preserved.
-
-This creates one independently selectable consumer-contract layer alongside the
-existing public TCP probes, without scattering mutable-sentinel tests or exporting
-test seams. [Integration test ownership](../../integrationtests/README.md) records
+The independently selectable public consumer-contract layer in
+`integrationtests/api/` currently has nine tracked test files in
+`package dgproto_test`. The top-level `integrationtests/` TCP layer has four
+tracked test/helper files in `package integrationtests`. These source inventories
+are not executed-test counts. Mutable-sentinel tests stay serial; no test seams
+are exported. [Integration test ownership](../../integrationtests/README.md) records
 selectors, helper ownership and non-parallel sentinel requirements.
 
 | Responsibility | Current owner and checks |
@@ -53,7 +65,7 @@ selectors, helper ownership and non-parallel sentinel requirements.
 | Accept retry classification | Stdlib-only `internal/acceptpolicy/` |
 | Optional process-wide traffic-secret sink | Tagged stdlib-only `internal/keylog/`; root owns session commit decisions and default no-ops |
 | Handshake, Session, Connection and Server state/lifecycle | Root responsibility-oriented files; white-box tests remain root |
-| Public-only framing rejection/EOF/cancellation | `integrationtests/tcp_test.go` |
+| Public TCP framing/stream/cancellation | `integrationtests/tcp_test.go`, `integrationtests/tcp_stream_test.go`, `integrationtests/tcp_cancellation_test.go`; shared public helpers in `integrationtests/tcp_helpers_test.go` |
 | Godoc, vectors, conformance, fuzz and keylog build variants | Existing root examples/tests and unchanged `testdata/` |
 
 The four default leaves and optional tagged keylog leaf remain stdlib-only and acyclic. The mature public root
@@ -68,7 +80,9 @@ The import/helper audit rejected moving network-looking root tests:
 - `client_integration_test.go` uses injected `dialContext`, private started/key
   storage and shared root helpers.
 - `tcp_concurrent_echo_test.go` uses private abort for bounded runtime cleanup.
-- `tcp_test.go` supplies `testTransportFrame` to root hardening/session tests.
+- `tcp_test_helpers_test.go` supplies `testTransportFrame` and gated-I/O fixtures
+  to root white-box consumers; root `tcp_test.go` keeps nil Connection misuse.
+  Public stream/cancellation closures are in `integrationtests/`, not these helpers.
 - `send_api_test.go` exercises private queue/completion state despite its name.
 
 Those tests stay root; no helper duplication or weakened assertions. Keep
@@ -78,14 +92,23 @@ independent helper closure, not merely rename files or split them by line count.
 Root StaticKey, Header, Message/TLV/ReplayWindow concrete identity, method sets,
 current/nil sentinels, validation priority, allocations/copies and ownership are
 preserved. Session authentication/replay/rekey atomicity and Connection/Server
-lifecycle/callbacks are untouched. The ErrorMessage specification says
-`code:u16 little-endian || context:utf8`, while the existing implementation uses an
-optional aligned type-1 text TLV. That discrepancy remains unresolved; existing
-byte tests are not a decision to certify the implementation as normative.
+lifecycle/callbacks remain root-owned. ErrorMessage in `messages_error.go` now
+implements normative `code:u16 LE || context:raw UTF-8`, not TLV;
+`integrationtests/api/messages_error_api_test.go` owns its public contracts.
+The historical discrepancy was resolved by `5d4d34c`. Nonempty Error is
+wire-incompatible with the old TLV codec, without negotiation or fallback;
+SessionClose remains TLV-backed. See the [migration guide](../guides/error-message-migration.md)
+for paired rollout/rollback and Rust's preserved public u8 restriction.
+This is an existing compatibility change, not fresh tests or interoperability proof.
 
-## Observed validation and remaining gates
+## Historical validation and remaining gates
 
-Go 1.26.5 windows/amd64, CGO_ENABLED=1; DGPROTO_KEYLOG unset. After the suite move:
+At the public consumer-suite relocation checkpoint
+`598ca84c2b27d317fc6b778a5d5daec07c3f8dcf`, six unchanged files, 894 lines,
+20 top-level tests and two benchmarks moved with their helper closure;
+the 251-entry test/benchmark/fuzz/example inventory was preserved then.
+These are historical counts, not the current inventory above.
+Go 1.26.5 windows/amd64, CGO_ENABLED=1; DGPROTO_KEYLOG unset. After that move:
 
 ```sh
 go test -count=1 ./integrationtests/...
@@ -99,14 +122,15 @@ gofmt -l .
 git diff --check
 ```
 
-All passed; formatting/diff output was empty. Full race covered all seven
-packages with process-local `C:/msys64/mingw64/bin` PATH and GCC 16.2.0 (MSYS2
+At that historical checkpoint all passed; formatting/diff output was empty.
+Full race covered all seven packages with process-local `C:/msys64/mingw64/bin` PATH and GCC 16.2.0 (MSYS2
 Rev4). Git blob equality established all six moves as byte-identical. Plain root
 `go test` no longer selects these contracts; use `./integrationtests/...` or `./...`.
 
-The subsequent current/history documentation separation does not change Go code
-or runnable examples. Validate links/anchors, fences and staged diffs for that
-prose-only step; no additional full code-test rerun is required.
+The current documentation synchronization changes no Go code or runnable
+examples. Validate links/anchors, fences, source paths/contracts and both diffs;
+full tests are intentionally skipped for this prose-only step. Historical passes
+above are not fresh validation of the current checkout.
 
 Minimum-line Go 1.25.x, Linux/macOS execution, fresh fuzz campaigns, sustained
 benchmarks, vulnerability scans and independent interoperability/deployment

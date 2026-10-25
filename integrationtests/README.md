@@ -1,20 +1,43 @@
 # Public integration tests
 
-The six-file relocation preserved all 20 tests and two benchmarks byte-for-byte;
+## Current ownership
+
+`api/` currently contains nine tracked test files in `package dgproto_test`;
+the top-level TCP layer contains four tracked test/helper files in
+`package integrationtests`, importing the public library as `dgproto`.
+These are source inventory/ownership observations, not fresh test results.
+The [current package layout](../docs/architecture/package-layout.md) records
+the completed root/default-leaf graph and optional tagged keylog boundary.
+
+## Historical relocation evidence
+
+At local commit `598ca84c2b27d317fc6b778a5d5daec07c3f8dcf`, the six-file
+relocation preserved all 20 tests and two benchmarks byte-for-byte;
 Git blob comparison and the 251-entry global test/benchmark/fuzz/example inventory
-were unchanged. Local validation used Go 1.26.5 windows/amd64, CGO_ENABLED=1:
+were unchanged at that checkpoint, not counts of today's suite.
+Historical local validation used Go 1.26.5 windows/amd64, CGO_ENABLED=1:
 focused integration tests, vector/conformance selectors, full default/tagged tests
 and vet, and full race passed on all seven packages. Race used process-local
 MinGW PATH and GCC 16.2.0 (MSYS2 Rev4). Formatting/diff checks were empty;
 DGPROTO_KEYLOG was unset. These are local results, not minimum-Go/other-OS,
 fuzz-campaign, sustained-benchmark, vulnerability or interoperability evidence.
+No tests were rerun for the current documentation-only synchronization.
+
+## Current selectors and helper boundaries
 
 Run `go test -count=1 ./integrationtests/...` from the repository root. Plain
 `go test` at root does not run these packages.
 
 - `api/`: consumer contracts for Header, Frame, TLV, replay and typed handshake/control/
-  application messages. These files import only the public library and the
-  standard library. `frame_test.go` owns the complete public frame layout,
+  application messages. Raw Error contracts live in `api/messages_error_api_test.go`
+  against root `messages_error.go`; `api/messages_tlv_api_test.go` covers
+  TLV-backed EncryptedData/SessionClose, not Error. Error uses
+  `code:u16 LE || context:raw UTF-8`; nonempty Error is wire-incompatible with
+  the historical TLV codec, without negotiation or fallback. See the
+  [paired migration/rollback guide](../docs/guides/error-message-migration.md),
+  including Rust's public u8 restriction; suite inventory is not interop proof.
+  These files import only the public library and the standard library.
+  `frame_test.go` owns the complete public frame layout,
   validation/error priority, receive-reserved-field and buffer-ownership suite;
   select it with `go test -run 'TestFrame|TestNewFrame' -count=1 ./integrationtests/api`.
   `messages_test.go` owns the complete typed-message golden, round-trip/ownership,

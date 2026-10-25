@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes the Go implementation. The [protocol specification](../protocol/dgproto-v1.md) is normative for wire behavior. The [package layout](package-layout.md) records the earlier reorganization checkpoint; its unresolved ErrorMessage TLV discrepancy paragraph is superseded by the raw Error implementation described below and the [migration guide](../guides/error-message-migration.md). The [archived chronology](package-layout-history.md) preserves earlier observations/proposals; its recommendations and inventories are not current guidance.
+This document describes the Go implementation. The [protocol specification](../protocol/dgproto-v1.md) is normative for wire behavior. The [package layout](package-layout.md) records the completed current responsibility layout and test ownership; raw Error compatibility and paired rollout/rollback are described in the [migration guide](../guides/error-message-migration.md). The [archived chronology](package-layout-history.md) preserves earlier observations/proposals; its recommendations and inventories are not current guidance.
 
 ## File map
 
@@ -48,7 +48,7 @@ copy/error priority, receive-reserved fields, text/wrapper limits and truncation
 cases are retained. Root implementation, dependencies, tags and public API are
 unchanged; this is a test visibility boundary, not a parser or crypto rewrite.
 
-A fresh TCP audit kept its stream owner whole: each direction owns a serialized
+The TCP stream owner remains whole: each direction owns a serialized
 lane, queued waits do not alter deadlines, and cancellation watchers join before
 the deadline is cleared and the lane released. Root framing retains Header/Frame
 validation and owned allocation, and root error adaptation retains current
