@@ -4,14 +4,14 @@ This document describes the Go implementation. The [protocol specification](../p
 
 ## File map
 
-- `header.go`, `frame.go`: real public Header/Flags/MessageType, current Magic/error variables, semantic header/frame validation and owned output.
+- `header.go`, `frame.go`: real public Header/Flags/MessageType, current Magic/error variables, semantic header/frame validation and owned output. Complete public frame layout/validation/ownership tests live in `integrationtests/api/frame_test.go`; private AAD, vectors/conformance and fuzz tests remain root.
 - `internal/wire/header.go`: complete lossless fixed-header little-endian byte codec and normative shape constants, using transient primitive values without allocation. `header_test.go` covers golden/every-octet/precondition cases; `integrationtests/api/header_api_test.go` and `header_wire_test.go` cover public identity/errors/ownership/allocation and exact received AAD octets.
 - `tlv.go`: concrete public TLV, exact copies/empty shapes, current error sentinels and descriptor allocation.
 - `internal/tlv/codec.go`: bounded arithmetic and two-pass primitive byte codec; colocated `codec_test.go` holds golden/alignment and hostile-input algorithm cases. `integrationtests/api/tlv_api_test.go` checks consumer identity/error/ownership/allocation; `tlv_decode_limits_test.go`, `tlv_encode_regression_test.go` and `tlv_decode_benchmark_test.go` retain public integration/resource coverage.
 - `messages.go`: shared sizes/current error variables and real public primitive control wrappers, validation and owned allocation.
 - `messages_tlv.go`: real root EncryptedData/SessionClose/ErrorMessage, complete typed-TLV uniqueness and UTF-8 text validation/codec closure. `integrationtests/api/messages_tlv_api_test.go` covers external consumer identity/interfaces, copy/empty shapes, validation priority, unchanged destinations and current/nil sentinels/receivers. No new internal error/descriptor seam; the historical ErrorMessage raw-context spec discrepancy is unchanged.
 - `internal/wire/control.go`: complete primitive PingPong, Ack, RekeyInit and post-MVP ticket byte layouts, reusing the existing wire leaf rather than adding a tiny package. `control_test.go` covers literal bytes, all Ack counts, suffix/zero overwrite, borrowed internal ticket views, buffer preconditions and zero primitive allocations. `integrationtests/api/messages_api_test.go` checks concrete identity, method sets, current/nil sentinel chains, error priority, unchanged-on-error/nil-receiver behavior, ownership, boundaries and allocation budgets; vectors/conformance/message fuzz remain root.
-- `messages_handshake.go`: real root NoisePattern and three-flight wrapper definitions/codecs; `integrationtests/api/messages_handshake_test.go` checks external concrete identity, errors and final-flight ownership/rejection.
+- `messages_handshake.go`: real root NoisePattern and three-flight wrapper definitions/codecs; `integrationtests/api/messages_handshake_test.go` checks external concrete identity, errors and final-flight ownership/rejection. `integrationtests/api/messages_test.go` holds the complete cross-family public golden/round-trip/ownership/truncation/text/wrapper rejection suite; it imports only root and stdlib, with no helper seam.
 - `crypto.go`: ChaCha20-Poly1305, nonce formation, and authenticated encryption.
 - `static_key.go`: real root StaticKey identity, generation/loading, validation, owned public/Noise key copies and the private loading reader; `static_key_test.go` covers concrete storage identity, copy boundaries and current/nil sentinels.
 - `handshake.go`: complete Noise XX flight state machine, peer authentication and transcript-derived session material; static identity operations live separately without moving runtime state into an internal package.
@@ -34,6 +34,32 @@ This document describes the Go implementation. The [protocol specification](../p
 - `server_handshake.go`: responder establishment, authenticated allowlist and handshake-frame validation shared with the client; root symbols and wire behavior unchanged.
 - `internal/acceptpolicy/errors.go`: stateless accept-error classification; the server retains backoff and lifecycle ownership.
 - `keylog.go`, `keylog_disabled.go`: tagged sink forwarding and unchanged default no-ops. Only the tagged facade imports `internal/keylog/writer.go`, which owns the complete process-wide environment/open-once/file/leaf-lock/record-formatting responsibility. Colocated tagged tests cover exact synthetic record bytes, append/single-open, no retry after absent/failed opening, and concurrent non-interleaved initial pairs/epoch records. Root `keylog_enabled_test.go` keeps private Session/rekey commit integration in a fresh subprocess, with no production reset/close API. Session commit points and lock ownership are unchanged.
+
+## Frame/message test-boundary checkpoint
+
+The complete frame and cross-family typed-message suites now live in
+`integrationtests/api/frame_test.go` and `integrationtests/api/messages_test.go`.
+Both are external consumers (`package dgproto_test`) with explicit public imports;
+neither depends on root-private helpers. The existing assertions, literal bytes,
+copy/error priority, receive-reserved fields, text/wrapper limits and truncation
+cases are retained. Root implementation, dependencies, tags and public API are
+unchanged; this is a test visibility boundary, not a parser or crypto rewrite.
+
+A fresh TCP audit kept its stream owner whole: each direction owns a serialized
+lane, queued waits do not alter deadlines, and cancellation watchers join before
+the deadline is cleared and the lane released. Root framing retains Header/Frame
+validation and owned allocation, and root error adaptation retains current
+sentinels and context priority shared with client establishment. Extracting only
+lane/watch helpers would be a micro-utility; extracting the entire stream engine
+would need protocol/error adaptation plus additional concurrency/performance
+justification. Neither is warranted merely to increase package count.
+
+Root network tests retain injected dialers, private started/key/abort state and
+shared `testTransportFrame` dependencies. TLV maximum-size tests use private
+alignment arithmetic; crypto tests use private nonce/AEAD/AAD/entropy seams.
+No helpers were duplicated, assertions weakened or private APIs exported for a
+move. Future test work should separate whole helper closures by responsibility,
+not treat necessary public root files or atomic runtime owners as layout defects.
 
 ## Package direction and development
 
