@@ -2,9 +2,23 @@
 
 This is an architecture plan, not a release checklist or a compatibility certification. Read the [runtime overview](overview.md), [repository guide](../../AGENTS.md), [public package overview](../../doc.go), and [protocol specification](../protocol/dgproto-v1.md) together.
 
-The authoritative resume point is **Current checkpoint: primitive control payload codecs** below. Older checkpoints and next-step recommendations are historical; their package inventories do not describe the current tree.
+The authoritative resume point is **Current checkpoint: static identity responsibility** below. Older checkpoints and next-step recommendations are historical; their package inventories do not describe the current tree.
 
-## Current checkpoint: primitive control payload codecs
+## Current checkpoint: static identity responsibility
+
+Continued on `refactor/internal-packages` from the previous primitive-control checkpoint. Commit review re-read the current root guide and inspected the branch, status, complete tracked diffs and both new files; only the six authorized implementation/test/guide paths were changed, and the index was initially empty. No nested guides exist. This is one coherent local organization step, not another codec migration or a release.
+
+[static_key.go](../../static_key.go) now groups the complete static identity responsibility: the real root StaticKey, size constant, current ErrInvalidStaticKey variable, generation/loading, pair conversion, validation, owned public/Noise key copies and the private fixedReader used only by loading. These declarations move without changing bodies or storage. [handshake.go](../../handshake.go) retains the complete flight-order state machine, peer authentication, transcript/session derivation and ErrHandshake. Identity provisioning is used independently by client/server configuration; separating that responsibility improves navigation without an arbitrary line-count split or a microscopic internal crypto package. Public concrete identity remains root-owned, and the existing Noise dependency is unchanged.
+
+[static_key_test.go](../../static_key_test.go) adds focused storage/package identity, input/public/Noise-pair copy and replacement/nil sentinel regressions. Existing handshake ownership and deterministic transcript/traffic-key tests stay intact. Session receive/rekey/lifecycle transactions, stdlib-only internal leaves, wire/defaults and the historical ErrorMessage spec discrepancy are untouched. No consumer changes are required because signatures and import paths are unchanged.
+
+### Validation for this step
+
+Go 1.26.5 windows/amd64, CGO_ENABLED=1; module minimum remains Go 1.25.0. Fresh commit-review `go test -run 'Test.*(Handshake|StaticKey)|TestJSONWireVectors|TestHS' -count=1 ./...` passed; earlier baseline results were not reused as current evidence. Fresh `go test -count=1 ./...`, `go vet ./...` and `go test -tags dgproto_keylog -count=1 ./...` passed. Focused `go test -race -run 'Test.*(Handshake|StaticKey)|TestJSONWireVectors|TestHS' -count=1 ./...` passed with process-local MinGW gcc/g++ PATH configuration. `gofmt -l .`, `git diff --check` and `git diff --cached --check` were empty; complete tracked diffs and both new files were reviewed. Direct source comparison with HEAD confirmed exact relocated StaticKey and fixedReader bodies. Full race, minimum-Go 1.25.x and Linux/macOS execution remain outstanding; benchmarks/fuzz campaigns were not run for this unchanged-body move. Earlier checkpoint passes are not evidence for this batch.
+
+This checkpoint is included with the coupled implementation and regressions in the authorized local refactor commit. No dependencies, fixtures, remote actions or release artifacts are part of this step. A broader TLV/text validation seam still needs separate justification; do not fragment atomic runtime ownership to continue this refactor.
+
+## Historical checkpoint: primitive control payload codecs
 
 Audited clean `refactor/internal-packages` at `ed54c67`, including both diffs, recent history, root guide (no nested guides), architecture, existing leaves, message/frame/rekey/crypto code and affected tests. The complete control-payload primitive extraction and coupled regressions are committed as `202782e` (`refactor(wire): colocate primitive control payload codecs`). No push, tag or release is part of this batch.
 

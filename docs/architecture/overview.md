@@ -12,7 +12,8 @@ This document describes the Go implementation. The [protocol specification](../p
 - `internal/wire/control.go`: complete primitive PingPong, Ack, RekeyInit and post-MVP ticket byte layouts, reusing the existing wire leaf rather than adding a tiny package. `control_test.go` covers literal bytes, all Ack counts, suffix/zero overwrite, borrowed internal ticket views, buffer preconditions and zero primitive allocations. Root `messages_api_test.go` checks concrete identity, method sets, current/nil sentinel chains, error priority, unchanged-on-error/nil-receiver behavior, ownership, boundaries and allocation budgets; vectors/conformance/message fuzz remain root.
 - `messages_handshake.go`: real root NoisePattern and three-flight wrapper definitions/codecs; `messages_handshake_test.go` checks external concrete identity, errors and final-flight ownership/rejection.
 - `crypto.go`: ChaCha20-Poly1305, nonce formation, and authenticated encryption.
-- `handshake.go`: Noise XX handshake state and key derivation.
+- `static_key.go`: real root StaticKey identity, generation/loading, validation, owned public/Noise key copies and the private loading reader; `static_key_test.go` covers concrete storage identity, copy boundaries and current/nil sentinels.
+- `handshake.go`: complete Noise XX flight state machine, peer authentication and transcript-derived session material; static identity operations live separately without moving runtime state into an internal package.
 - `client.go`: required-pin TCP dial and bounded establishment; returns a stopped caller-owned runtime with identity metadata and no traffic secrets.
 - `session.go`: central secrets/state/construction/close and shared typed codec dispatch.
 - `session_send.go`: send serialization, sequence allocation and pending send-rekey transaction/commit.
