@@ -13,7 +13,9 @@ This document describes the Go implementation. The [protocol specification](../p
 - `session.go`: central secrets/state/construction/close and shared typed codec dispatch.
 - `session_send.go`: send serialization, sequence allocation and pending send-rekey transaction/commit.
 - `session_receive.go`: candidate authentication and atomic replay/receive-epoch/rekey/grace validation and commit.
-- `rekey.go`, `replay.go`: rekey policy/confirmation and replay windows.
+- `rekey.go`: rekey policy and confirmation.
+- `replay.go`: public replay types, unchanged value storage, tokens, root sentinels and forwarding methods.
+- `internal/replay/window.go`: replay validation, commit and bitmap shift implementation; `window_test.go` contains the relocated algorithm scenarios. `replay_api_test.go` covers the root facade.
 - `transport.go`, `tcp.go`: frame transport and TCP framing (no outer length prefix; body length is derived from the fixed header).
 - `connection.go`: central connection/config/error declarations, constructor, and shared operation contexts.
 - `connection_receive.go`: receive/control routing, serial handler dispatch, bounded shutdown wait and panic containment.
@@ -26,7 +28,7 @@ This document describes the Go implementation. The [protocol specification](../p
 
 ## Package direction and development
 
-The root public package owns concrete wire/message/replay types, error sentinels and session/runtime state. Its only internal dependency is the stateless `internal/acceptpolicy` leaf, which imports only the standard library and never root. Cohesive root files are source organization, not alias facades or separate packages: the handshake wrapper family stays root-owned to preserve public identity, method sets, error wrapping and buffer ownership. Session authentication/replay/rekey commits and lifecycle locks remain together. Follow [test placement and contribution guidance](../../.github/CONTRIBUTING.md#where-to-add-code-and-tests) when adding code; this layout does not certify production readiness.
+The root public package owns concrete wire/message/replay types, error sentinels and session/runtime state. Its internal dependencies are `internal/acceptpolicy` and `internal/replay`, each importing only the standard library and never root. The replay leaf owns validation/commit/bitmap algorithms over primitive caller-owned storage; root retains the exact ReplayWindow/ReplayToken representation and sentinel variables. No pointer-backed window, internal type alias, or runtime interface is introduced. Cohesive root files are source organization, not alias facades or separate packages: the handshake wrapper family stays root-owned to preserve public identity, method sets, error wrapping and buffer ownership. Session authentication/replay/rekey commits and lifecycle locks remain together. Follow [test placement and contribution guidance](../../.github/CONTRIBUTING.md#where-to-add-code-and-tests) when adding code; this layout does not certify production readiness.
 
 ## Send and rekey flow
 

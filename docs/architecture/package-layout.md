@@ -2,9 +2,39 @@
 
 This is an architecture plan, not a release checklist or a compatibility certification. Read the [runtime overview](overview.md), [repository guide](../../AGENTS.md), [public package overview](../../doc.go), and [protocol specification](../protocol/dgproto-v1.md) together.
 
-The authoritative resume point is **Current checkpoint: block 9 implemented, handshake message family** below. Older checkpoints and proposed scopes are historical evidence, not instructions to repeat completed work.
+The authoritative resume point is **Current checkpoint: internal replay implementation** below. All older blocks, validation reports, and next-step recommendations are historical; their claims that acceptpolicy is the only internal package no longer describe the current tree.
 
-## Current checkpoint: block 9 implemented, handshake message family
+## Current checkpoint: internal replay implementation
+
+Continued from clean `refactor/internal-packages` at `e1ff917`. This stage extracts a real Go package rather than splitting another root source file:
+
+```text
+dgproto (public API and runtime ownership)
+  -> internal/replay       -> errors
+  -> internal/acceptpolicy -> errors, net, syscall
+```
+
+`internal/replay/window.go` owns the complete 2048-entry sequence-validation, authenticated commit, and bitmap shift algorithm. Its API operates on uint64 state and a fixed bitmap owned by the caller. `replay.go` keeps the original real root ReplayWindow/ReplayToken types, all fields, method sets, value representation and root sentinel variables. Forwarding methods and error translation retain private helper behavior and the existing nil-receiver boundary. No embedded internal type, pointer-backed shared state, alias, unsafe conversion, interface layer or heap-owned window is introduced. Session's copy-then-commit receive/rekey/grace transaction and its lock stay unchanged; no production file other than `replay.go` changes.
+
+The original `replay_test.go` scenarios move to `internal/replay/window_test.go`. A test-only primitive adapter retains every test name and assertion unchanged, without copying the algorithm or importing root. Public facade regressions stay at root in `replay_api_test.go`: method set, PkgPath/name/field layout/comparability, exact sentinels, wrapped errors.Is/errors.As, replaceable sentinel variables, nil receiver, rejected-state preservation and independent value copies. Existing session/rekey/white-box, vectors and fuzz seed tests remain root integration coverage.
+
+Stable test topic renames (contents unchanged): `tcp_stress_patch_test.go` -> `tcp_concurrent_echo_test.go`, `tlv_decode_patch_test.go` -> `tlv_decode_limits_test.go`, `tlv_encode_patch_test.go` -> `tlv_encode_regression_test.go`. Tests requiring runtime internals remain at root; absent legacy editor paths are not part of this layout.
+
+### Candidate reassessment and next seam
+
+Replay is selected because its complete algorithm depends only on scalar state/bitmap, not Session, transport, crypto, callbacks or locks. Preserving exact root storage costs narrow forwarding and sentinel translation, not a speculative runtime facade. TLV remains a realistic next extraction: an internal codec can own bounded two-pass primitive parsing/encoding while root retains TLV concrete identity, nil/empty value ownership, allocation limits and exact wrapped errors. Review conversion allocation overhead and whether tests can move without losing public ownership coverage before implementing it. Header helpers are presently interleaved with public validation, mutable Magic, flags and exact received-byte AAD; extract a whole useful wire responsibility rather than several tiny byte helpers. Nonce/random-byte helpers alone are too small to justify a crypto package, and moving the full Codec would couple public Frame/Header validation and error precedence. Session/Connection runtime extraction remains a larger separate design because atomic state and lock ownership must not be fragmented. These are scoped follow-ups, not evidence that all internal extraction is unjustified.
+
+### Observed validation
+
+Local toolchain: Go 1.26.5 windows/amd64, CGO_ENABLED=1, CC=`zig cc`. Module and dependencies unchanged. Baseline ordinary tests/vet and actual `dgproto_keylog` tests/vet passed before editing; focused replay/session/rekey/vector/conformance selector passed before and after.
+
+Post-change `go test -count=1 ./internal/replay`, `go test -run "Test.*(Replay|Rekey|Session)|TestJSONWireVectors|TestWIRE|TestHS|TestSESS|TestP0" -count=1 ./...`, `go test -count=1 ./...`, `go vet ./...`, and `go test -tags dgproto_keylog -count=1 ./...` passed. `go vet -tags dgproto_keylog ./...`, `go build ./...`, `gofmt -l .`, and unstaged/staged `git diff --check` also completed with an exit-0 marker and no diagnostics/format filenames. Changed Go files alone were gofmt-written. Modified documentation link targets and fence balance were checked; the staged diff was empty at the original extraction validation checkpoint. A temporary AST checker verified all root type/constant/variable definitions and exported signatures against the original `e1ff917` HEAD, unchanged other production files, exact renamed-test contents and all relocated replay scenarios/assertions. A temporary external module with local replace ran the public API tests and 100,000 deterministic operation iterations against the original HEAD replay implementation, comparing errors, bitmap/highest/generation, stale commits and value copies; consumer tests and vet passed. Temporary verification code is not shipped.
+
+Supported race remains unavailable, not passed: fresh compiler discovery finds Zig only, with no gcc/clang; the known Windows linker failure on WaitOnAddress/WakeByAddressSingle/WakeByAddressAll is not retried. Security-patched minimum Go 1.25.x platform CI and supported Linux race remain external gates. No dependency update, fixture regeneration, fuzz campaign, benchmark or interoperability certification. At the original extraction checkpoint, no staging, commit, push, history changes or release artifacts were authorized. The user subsequently explicitly authorized commit/push for this ongoing refactor session: checkpoint work is committed in thematic replay, pure-test-rename, and architecture/workflow groups with explicit path staging; this does not authorize release artifacts or future unrelated remote actions. The ErrorMessage appendix discrepancy documented below remains deferred and untouched.
+
+For development, add replay algorithm tests beside `internal/replay/window.go`, public contract tests at root, and use the focused selector above followed by uncached full tests/vet and `dgproto_keylog` checks. Follow the [contribution guide](../../.github/CONTRIBUTING.md#where-to-add-code-and-tests). Do not resume by repeating a historical root-only split.
+
+## Historical checkpoint: block 9 implemented, handshake message family
 
 Continued from clean `refactor/internal-packages` at `c7d9cbe`. Implemented the previously recommended cohesive root source boundary: moved NoisePattern, its XX/IK constant group, all three handshake wrapper structs and their six methods (11 complete declarations) from `messages.go` to `messages_handshake.go`. The new file imports only `fmt`; shared sizes/error sentinels and application/control families stay in `messages.go`. No alias facade, new internal package, state transfer, module dependency, wire, crypto or keylog change. This is source/test organization within the public library, not an application/server hierarchy.
 
