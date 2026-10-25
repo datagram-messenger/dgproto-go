@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"net"
 	"sync"
 	"syscall"
@@ -168,128 +167,6 @@ func TestServerHandshakeAndDataTransfer(t *testing.T) {
 	_ = clientSession.Close()
 }
 
-func TestNewServerRejectsInvalidStaticKeyEarly(t *testing.T) {
-	if _, err := NewServer(ServerConfig{}); !errors.Is(err, ErrInvalidStaticKey) {
-		t.Fatalf("zero key error = %v", err)
-	}
-	key := generateTestStaticKey(t)
-	key.public[0] ^= 1
-	if _, err := NewServer(ServerConfig{StaticKey: key}); !errors.Is(err, ErrInvalidStaticKey) {
-		t.Fatalf("mismatched key error = %v", err)
-	}
-}
-
-func TestNewServerTimeoutConsistency(t *testing.T) {
-	config := validServerConfig(t)
-	config.ReadTimeout = time.Second
-	config.IdleTimeout = 2 * time.Second
-	if _, err := NewServer(config); err == nil {
-		t.Fatal("expected read timeout shorter than idle timeout to fail")
-	}
-	config.ReadTimeout = 0
-	if _, err := NewServer(config); err != nil {
-		t.Fatalf("disabled read timeout: %v", err)
-	}
-}
-
-func TestNewServerNormalizesKeepaliveTimeoutBeforeValidation(t *testing.T) {
-	tests := []struct {
-		name             string
-		readTimeout      time.Duration
-		keepaliveTimeout time.Duration
-		wantErr          bool
-		wantTimeout      time.Duration
-	}{
-		{name: "default rejected by short read timeout", readTimeout: 2 * time.Second, wantErr: true},
-		{name: "default accepted and stored", readTimeout: 3 * time.Second, wantTimeout: 2 * time.Second},
-		{name: "explicit timeout accepted", readTimeout: 1500 * time.Millisecond, keepaliveTimeout: 500 * time.Millisecond, wantTimeout: 500 * time.Millisecond},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			config := validServerConfig(t)
-			config.ReadTimeout = test.readTimeout
-			config.KeepaliveInterval = time.Second
-			config.KeepaliveTimeout = test.keepaliveTimeout
-
-			server, err := NewServer(config)
-			if test.wantErr {
-				if err == nil {
-					t.Fatal("expected liveness validation error")
-				}
-				return
-			}
-			if err != nil {
-				t.Fatal(err)
-			}
-			if server.config.KeepaliveTimeout != test.wantTimeout {
-				t.Fatalf("KeepaliveTimeout = %v, want %v", server.config.KeepaliveTimeout, test.wantTimeout)
-			}
-		})
-	}
-}
-
-func TestNewServerPreservesKeepaliveOverflowValidation(t *testing.T) {
-	tests := []struct {
-		name    string
-		config  func(ServerConfig) ServerConfig
-		wantErr string
-	}{
-		{
-			name: "unrepresentable default",
-			config: func(config ServerConfig) ServerConfig {
-				config.KeepaliveInterval = time.Duration(math.MaxInt64/2 + 1)
-				return config
-			},
-			wantErr: "dgproto: KeepaliveInterval is too large",
-		},
-		{
-			name: "unrepresentable liveness window",
-			config: func(config ServerConfig) ServerConfig {
-				config.KeepaliveInterval = time.Duration(math.MaxInt64)
-				config.KeepaliveTimeout = 1
-				return config
-			},
-			wantErr: "dgproto: keepalive liveness window is too large",
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			_, err := NewServer(test.config(validServerConfig(t)))
-			if err == nil || err.Error() != test.wantErr {
-				t.Fatalf("error = %v, want %q", err, test.wantErr)
-			}
-		})
-	}
-}
-
-func TestNewServerAdmissionDefaults(t *testing.T) {
-	server, err := NewServer(validServerConfig(t))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if server.config.HandlerQueue != 16 {
-		t.Fatalf("HandlerQueue = %d", server.config.HandlerQueue)
-	}
-	if server.config.MaxConcurrentHandshakes != 64 {
-		t.Fatalf("MaxConcurrentHandshakes = %d", server.config.MaxConcurrentHandshakes)
-	}
-	if server.config.MaxActiveConnections != 1024 {
-		t.Fatalf("MaxActiveConnections = %d", server.config.MaxActiveConnections)
-	}
-}
-
-func TestNewServerRejectsNegativeAdmissionLimits(t *testing.T) {
-	tests := []ServerConfig{
-		{MaxConcurrentHandshakes: -1},
-		{MaxActiveConnections: -1},
-	}
-	for _, config := range tests {
-		if _, err := NewServer(config); err == nil {
-			t.Fatalf("expected error for config %#v", config)
-		}
-	}
-}
-
 func TestServerHandshakeAdmissionSaturationAndRelease(t *testing.T) {
 	server, err := NewServer(func() ServerConfig { c := validServerConfig(t); c.MaxConcurrentHandshakes = 1; return c }())
 	if err != nil {
@@ -430,14 +307,6 @@ func TestServerCloseIsIdempotent(t *testing.T) {
 	}
 	if err := server.Close(); err != nil {
 		t.Fatal(err)
-	}
-}
-
-func TestNewServerRejectsNonMVPCiphers(t *testing.T) {
-	for _, suite := range []CipherSuite{CipherAES256GCM, 99} {
-		if _, err := NewServer(ServerConfig{CipherSuite: suite}); !errors.Is(err, ErrUnsupportedCipher) {
-			t.Fatalf("suite %d error = %v", suite, err)
-		}
 	}
 }
 

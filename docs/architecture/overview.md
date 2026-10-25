@@ -29,7 +29,8 @@ This document describes the Go implementation. The [protocol specification](../p
 - `connection_lifecycle.go`: start/close/abort coordination, Done ownership, terminal cause and shutdown.
 - `connection_send.go`: send/queue API, enqueue admission, single writer/rekey ordering, completion and pending disposal.
 - `connection_keepalive.go`: maintenance loop, idle/keepalive timers, timeout default, ping expectation/ACK and activity helpers.
-- `server.go`: central server/config/error definitions, default/config validation, listener accept/backoff and shutdown snapshots/join.
+- `server_config.go`: public ServerConfig and the complete NewServer startup transaction: validation/default ordering followed by initial map/channel allocation. `server_config_test.go` owns constructor regressions, normalized/explicit snapshots and error priority; shared key/config helpers remain in root server tests.
+- `server.go`: central Server/error/admission definitions, listener accept/backoff and shutdown snapshots/join. Startup configuration is separate source organization in the same root package, not a new runtime owner; Server locks, slots and handoff remain unchanged.
 - `server_runtime.go`: complete per-socket worker, admission/disconnect containment, independent slot leases, worker reservation and atomic socket-to-runtime handoff. All methods still use the same root Server state and shutdown mutex; `server_runtime_test.go` checks both serialized handoff/shutdown snapshots alongside existing hardening stress tests.
 - `server_handshake.go`: responder establishment, authenticated allowlist and handshake-frame validation shared with the client; root symbols and wire behavior unchanged.
 - `internal/acceptpolicy/errors.go`: stateless accept-error classification; the server retains backoff and lifecycle ownership.
