@@ -4,7 +4,9 @@ This document describes the Go implementation. The [protocol specification](../p
 
 ## File map
 
-- `header.go`, `frame.go`, `tlv.go`: headers, frame validation and TLVs.
+- `header.go`, `frame.go`: public headers and frame validation.
+- `tlv.go`: concrete public TLV, exact copies/empty shapes, current error sentinels and descriptor allocation.
+- `internal/tlv/codec.go`: bounded arithmetic and two-pass primitive byte codec; colocated `codec_test.go` holds golden/alignment and hostile-input algorithm cases. Root `tlv_api_test.go` checks consumer identity/error/ownership/allocation; `tlv_decode_limits_test.go`, `tlv_encode_regression_test.go` and `tlv_decode_benchmark_test.go` retain public integration/resource coverage.
 - `messages.go`: shared message sizes/errors and application/control message families with shared TLV/text validation.
 - `messages_handshake.go`: real root NoisePattern and three-flight wrapper definitions/codecs; `messages_handshake_test.go` checks external concrete identity, errors and final-flight ownership/rejection.
 - `crypto.go`: ChaCha20-Poly1305, nonce formation, and authenticated encryption.
@@ -28,7 +30,7 @@ This document describes the Go implementation. The [protocol specification](../p
 
 ## Package direction and development
 
-The root public package owns concrete wire/message/replay types, error sentinels and session/runtime state. Its internal dependencies are `internal/acceptpolicy` and `internal/replay`, each importing only the standard library and never root. The replay leaf owns validation/commit/bitmap algorithms over primitive caller-owned storage; root retains the exact ReplayWindow/ReplayToken representation and sentinel variables. No pointer-backed window, internal type alias, or runtime interface is introduced. Cohesive root files are source organization, not alias facades or separate packages: the handshake wrapper family stays root-owned to preserve public identity, method sets, error wrapping and buffer ownership. Session authentication/replay/rekey commits and lifecycle locks remain together. Follow [test placement and contribution guidance](../../.github/CONTRIBUTING.md#where-to-add-code-and-tests) when adding code; this layout does not certify production readiness.
+The root public package owns concrete wire/message/replay types, error sentinels and session/runtime state. Its internal dependencies are `internal/tlv`, `internal/acceptpolicy` and `internal/replay`, each importing only the standard library and never root. The TLV leaf owns byte parsing/writing and bounded arithmetic; root supplies concrete descriptors and one copy per nonempty decoded value without intermediate conversion allocation. Allocation-free failure details are wrapped around the root's current sentinel variables. Full validation precedes second-pass reading and public output allocation; internal Read/Write preconditions do not relax public hostile-input rejection. The replay leaf owns validation/commit/bitmap algorithms over primitive caller-owned storage; root retains the exact ReplayWindow/ReplayToken representation and sentinel variables. No pointer-backed window, internal type alias, or runtime interface is introduced. Cohesive root files are source organization, not alias facades or separate packages: the handshake wrapper family stays root-owned to preserve public identity, method sets, error wrapping and buffer ownership. Session authentication/replay/rekey commits and lifecycle locks remain together. Follow [test placement and contribution guidance](../../.github/CONTRIBUTING.md#where-to-add-code-and-tests) when adding code; this layout does not certify production readiness.
 
 ## Send and rekey flow
 

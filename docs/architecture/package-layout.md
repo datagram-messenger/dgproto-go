@@ -2,9 +2,36 @@
 
 This is an architecture plan, not a release checklist or a compatibility certification. Read the [runtime overview](overview.md), [repository guide](../../AGENTS.md), [public package overview](../../doc.go), and [protocol specification](../protocol/dgproto-v1.md) together.
 
-The authoritative resume point is **Current checkpoint: internal replay implementation** below. All older blocks, validation reports, and next-step recommendations are historical; their claims that acceptpolicy is the only internal package no longer describe the current tree.
+The authoritative resume point is **Current checkpoint: bounded internal TLV codec** below. Older checkpoints and next-step recommendations are historical; their package inventories do not describe the current tree.
 
-## Current checkpoint: internal replay implementation
+## Current checkpoint: bounded internal TLV codec
+
+Continued from clean `refactor/internal-packages` at `e8d5231`; implementation and coupled tests are committed as `07b85b9`.
+
+```text
+dgproto (public concrete API, copies, runtime ownership)
+  -> internal/tlv          -> encoding/binary, fmt
+  -> internal/replay       -> errors
+  -> internal/acceptpolicy -> errors, net, syscall
+```
+
+`internal/tlv/codec.go` owns bounded value/sequence/element arithmetic, zero-padded little-endian writing, whole-sequence validation/counting, and the validated second-pass field reader. Its byte/scalar boundary deliberately has no internal entry slice, root alias, unsafe conversion, interface or callback. Root `tlv.go` retains the original concrete TLV, fields, constants, methods and mutable error variables. Root allocates the exact descriptor count after full validation and copies each borrowed value directly once; empty values remain nil, successful empty sequences remain non-nil, malformed suffixes return no partial output. Read/Write preconditions are internal and documented; callers must not concurrently mutate validated input. Error classification is allocation-free and diagnostic formatting wraps the root sentinel selected at the failing call, including replacement or nil sentinels. Size, caller-limit, element, header, value and padding precedence is unchanged.
+
+Golden-wire and alignment-only scenarios move from `tlv_test.go` into `internal/tlv/codec_test.go`, beside overflow, maximum/dense sequence, every-byte truncation, opaque-padding and zero-allocation validation cases. Public identity/method signatures, exact diagnostics/current sentinels, copy separation, nil/empty shape and allocation budgets are in external-package `tlv_api_test.go`. Root `tlv_test.go`, `tlv_decode_limits_test.go`, `tlv_encode_regression_test.go`, `tlv_decode_benchmark_test.go`, vectors, conformance and parser fuzz tests remain integration/public-boundary coverage. No legacy editor filenames are recreated.
+
+### Observed TLV validation and resource evidence
+
+Go 1.26.5 windows/amd64, CGO_ENABLED=1, CC=`zig cc`; module minimum remains 1.25.0 and module/dependency/fixture files are unchanged. Fresh baseline full tests passed. Final focused selector `Test.*TLV|TestBounded|TestValidation|TestCodec|TestJSONWireVectors|TestWIRE|TestHS|TestSESS|TestP0` passed; all parser fuzz seeds also passed before the final scalar-only encoding-boundary adjustment. Uncached `go test -count=1 ./...`, `go test -tags dgproto_keylog -count=1 ./...`, both ordinary/tagged vet, `go build ./...`, `gofmt -l .` and unstaged/staged diff checks passed with definitive exit markers. A temporary AST comparison verified every root type/constant/variable declaration and exported signature against `e8d5231`, and all other root production files byte-identical. An isolated local-replace consumer ran the public API tests, tests/vet, and baseline differential comparison: 10,000 encodes, 20,006 wire cases at five limits, plus constructor/marshal maximum edges; exact error text, output/nil shape, field values and value capacities agreed. Temporary checkers are not repository utilities.
+
+Matched benchmarks used `go test -run "^$" -bench "TLV" -benchmem -benchtime=1s -count=3` before/after; final encoding adjustment was rechecked with the same parameters and `-bench "EncodeTLVs"`. All allocation counts and storage sizes were retained: empty decode 0, tiny 2/40 B, four tiny values 5/160 B, dense empty 1/~524288 B, large single 2/65568 B, malformed 3/120 B; encoding always one allocation for nonempty output (Long 65536 B, Typical 192 B, ManyEmpty 16384 B). An initial record-returning per-field size boundary slowed empty-heavy encoding and was rejected; a scalar failure kind restored final Typical 118.6–126.7 ns/op versus 126.0–136.6 baseline and ManyEmpty 32.3–35.2 microseconds versus 43.6–44.1. Long final 19.5–23.0 microseconds versus 22.8–23.3; decode empty has a small boundary cost (17.3 ns versus 11.7–12.4), while other decode timings were comparable or lower. Timing samples are not statistical performance certification, and some initial post samples overlapped other checks; allocation invariants are independently asserted.
+
+A real `FuzzDecodeTLVs` campaign with `-fuzztime=60s -parallel=2` passed, 1,267,024 executions and no failures (19 baseline corpus entries); final committed boundary was also checked with a 30-second/two-worker campaign: 641,689 executions, no failures, 31.437 seconds total. Supported race remains unavailable on the known Windows Zig toolchain and was not pointlessly retried. Security-patched minimum Go 1.25.x platform CI and supported Linux race remain external gates, not local passes. No independent interoperability, release, protocol/API/cipher/dependency change or fixture regeneration is claimed. The historical ErrorMessage appendix discrepancy remains deferred and untouched.
+
+### Next sequential candidates
+
+This is a substantial complete codec extraction, not a one-helper leaf. Do not add a second speculative package merely for count. Next review the fixed-header wire codec as one bounded responsibility: root must retain Header/Flags/MessageType, mutable Magic, exact validation/error precedence and received-byte AAD; use primitive fixed-array encoding/decoding only if conversion/allocation evidence remains favorable. A bounded text/TLV message validator is another candidate after reviewing shared SessionClose/ErrorMessage ownership and the deferred spec discrepancy; do not silently resolve that discrepancy. Nonce/random helpers alone remain too small. Session authentication/replay/rekey and runtime/handshake atomic ownership stay together. Continue in separately tested, promptly committed cohesive steps, followed by an explicit-path documentation commit and authorized non-force branch push.
+
+## Historical checkpoint: internal replay implementation
 
 Continued from clean `refactor/internal-packages` at `e1ff917`. This stage extracts a real Go package rather than splitting another root source file:
 
