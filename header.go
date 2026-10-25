@@ -1,20 +1,21 @@
 package dgproto
 
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
+
+	"github.com/datagram-messenger/dgproto-go/internal/wire"
 )
 
 const (
 	// HeaderSize is the encoded size of a DGProto v1 fixed header.
-	HeaderSize = 40
+	HeaderSize = wire.HeaderSize
 	// Version is the protocol version encoded in every DGProto v1 header.
-	Version uint8 = 1
+	Version uint8 = wire.Version
 	// AEADTagSize is the authentication tag size used by DGProto v1 ciphers.
-	AEADTagSize = 16
+	AEADTagSize = wire.AEADTagSize
 	// MaxFrameSize is the largest DGProto v1 frame permitted by TCP framing.
-	MaxFrameSize = 65535
+	MaxFrameSize = wire.MaxFrameSize
 )
 
 var (
@@ -158,16 +159,12 @@ func (h Header) marshalBinary(validateSend bool) ([]byte, error) {
 	}
 
 	buf := make([]byte, HeaderSize)
-	copy(buf[0:4], Magic[:])
-	buf[4] = h.Version
-	buf[5] = byte(h.Flags)
-	buf[6] = byte(h.MessageType)
-	buf[7] = h.Reserved[0]
-	copy(buf[8:24], h.SessionID[:])
-	binary.LittleEndian.PutUint64(buf[24:32], h.Sequence)
-	binary.LittleEndian.PutUint32(buf[32:36], h.PayloadLength)
-	buf[36] = h.PadLength
-	copy(buf[37:40], h.Reserved[1:])
+	wire.PutHeader(buf, wire.Header{
+		Magic: Magic, Version: h.Version, Flags: uint8(h.Flags),
+		MessageType: uint8(h.MessageType), Reserved: h.Reserved,
+		SessionID: h.SessionID, Sequence: h.Sequence,
+		PayloadLength: h.PayloadLength, PadLength: h.PadLength,
+	})
 	return buf, nil
 }
 
@@ -187,18 +184,16 @@ func (h *Header) UnmarshalBinary(data []byte) error {
 		return fmt.Errorf("%w: got %d, want %d", ErrUnsupportedVersion, data[4], Version)
 	}
 
-	var sessionID [16]byte
-	copy(sessionID[:], data[8:24])
-	reserved := [4]byte{data[7], data[37], data[38], data[39]}
+	raw := wire.ReadHeader(data)
 	decoded := Header{
-		Version:       data[4],
-		Flags:         Flags(data[5]),
-		MessageType:   MessageType(data[6]),
-		Reserved:      reserved,
-		SessionID:     sessionID,
-		Sequence:      binary.LittleEndian.Uint64(data[24:32]),
-		PayloadLength: binary.LittleEndian.Uint32(data[32:36]),
-		PadLength:     data[36],
+		Version:       raw.Version,
+		Flags:         Flags(raw.Flags),
+		MessageType:   MessageType(raw.MessageType),
+		Reserved:      raw.Reserved,
+		SessionID:     raw.SessionID,
+		Sequence:      raw.Sequence,
+		PayloadLength: raw.PayloadLength,
+		PadLength:     raw.PadLength,
 	}
 	if err := decoded.ValidateReceive(); err != nil {
 		return err
