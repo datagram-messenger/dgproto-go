@@ -1,10 +1,43 @@
-package dgproto
+package replay
 
 import (
 	"errors"
 	"math"
 	"testing"
 )
+
+// Test-only adapter keeps the relocated scenarios and assertions intact while
+// exercising the primitive boundary, not importing the public facade.
+const ReplayWindowSize = WindowSize
+
+var (
+	ErrReplayZero      = ErrZero
+	ErrReplayDuplicate = ErrDuplicate
+	ErrReplayTooOld    = ErrTooOld
+	ErrReplayStale     = ErrStale
+)
+
+type ReplayWindow struct {
+	highest    uint64
+	bitmap     [WordCount]uint64
+	generation uint64
+}
+
+type testToken struct {
+	sequence   uint64
+	generation uint64
+}
+
+func (w *ReplayWindow) Check(sequence uint64) (testToken, error) {
+	if err := Check(w.highest, &w.bitmap, sequence); err != nil {
+		return testToken{}, err
+	}
+	return testToken{sequence, w.generation}, nil
+}
+
+func (w *ReplayWindow) Commit(token testToken) error {
+	return Commit(&w.highest, &w.bitmap, &w.generation, token.sequence, token.generation)
+}
 
 func commitSequence(t *testing.T, w *ReplayWindow, sequence uint64) {
 	t.Helper()

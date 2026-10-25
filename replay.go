@@ -1,6 +1,10 @@
 package dgproto
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/datagram-messenger/dgproto-go/internal/replay"
+)
 
 const (
 	// ReplayWindowSize is the number of recent sequence numbers tracked.
@@ -38,14 +42,8 @@ func (w *ReplayWindow) Check(sequence uint64) (ReplayToken, error) {
 	if sequence == 0 {
 		return ReplayToken{}, ErrReplayZero
 	}
-	if sequence <= w.highest {
-		distance := w.highest - sequence
-		if distance >= ReplayWindowSize {
-			return ReplayToken{}, ErrReplayTooOld
-		}
-		if w.marked(distance) {
-			return ReplayToken{}, ErrReplayDuplicate
-		}
+	if err := replay.Check(w.highest, &w.bitmap, sequence); err != nil {
+		return ReplayToken{}, replayError(err)
 	}
 	return ReplayToken{sequence: sequence, generation: w.generation}, nil
 }
@@ -53,51 +51,36 @@ func (w *ReplayWindow) Check(sequence uint64) (ReplayToken, error) {
 // Commit records a sequence after its packet has been authenticated. A token
 // becomes stale after any successful Commit and must then be checked again.
 func (w *ReplayWindow) Commit(token ReplayToken) error {
-	if token.sequence == 0 || token.generation != w.generation {
+	if token.sequence == 0 {
 		return ErrReplayStale
 	}
-
-	sequence := token.sequence
-	if sequence <= w.highest {
-		distance := w.highest - sequence
-		if distance >= ReplayWindowSize || w.marked(distance) {
-			return ErrReplayStale
-		}
-		w.set(distance)
-	} else {
-		w.advance(sequence - w.highest)
-		w.highest = sequence
-		w.set(0)
-	}
-	w.generation++
-	return nil
+	return replayError(replay.Commit(&w.highest, &w.bitmap, &w.generation, token.sequence, token.generation))
 }
 
 func (w *ReplayWindow) marked(distance uint64) bool {
-	return w.bitmap[distance/64]&(uint64(1)<<(distance%64)) != 0
+	return replay.Marked(&w.bitmap, distance)
 }
 
 func (w *ReplayWindow) set(distance uint64) {
-	w.bitmap[distance/64] |= uint64(1) << (distance % 64)
+	replay.Set(&w.bitmap, distance)
 }
 
 func (w *ReplayWindow) advance(shift uint64) {
-	if shift >= ReplayWindowSize {
-		clear(w.bitmap[:])
-		return
-	}
+	replay.Advance(&w.bitmap, shift)
+}
 
-	wordShift := int(shift / 64)
-	bitShift := uint(shift % 64)
-	for dst := replayWordCount - 1; dst >= 0; dst-- {
-		src := dst - wordShift
-		var value uint64
-		if src >= 0 {
-			value = w.bitmap[src] << bitShift
-			if bitShift != 0 && src > 0 {
-				value |= w.bitmap[src-1] >> (64 - bitShift)
-			}
-		}
-		w.bitmap[dst] = value
+// Keep public sentinels root-owned, including their existing variable semantics.
+func replayError(err error) error {
+	switch err {
+	case replay.ErrZero:
+		return ErrReplayZero
+	case replay.ErrDuplicate:
+		return ErrReplayDuplicate
+	case replay.ErrTooOld:
+		return ErrReplayTooOld
+	case replay.ErrStale:
+		return ErrReplayStale
+	default:
+		return err
 	}
 }
