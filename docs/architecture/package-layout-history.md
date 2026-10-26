@@ -8,7 +8,46 @@
 
 This is an architecture plan, not a release checklist or a compatibility certification. Read the [runtime overview](overview.md), [repository guide](../../AGENTS.md), [public package overview](../../doc.go), and [protocol specification](../protocol/dgproto-v1.md) together.
 
-The authoritative resume point is **Current checkpoint: public consumer contract suite** below. Older checkpoints and next-step recommendations are historical; their package inventories do not describe the current tree.
+The authoritative resume point is [the current layout](package-layout.md), not
+an archived heading below. Older checkpoints and next-step recommendations are
+historical; their package inventories do not describe the current tree.
+
+## Completion batch: client configuration and remaining public primitive closures
+
+Continued from clean `refactor/internal-packages` at `65daebc` (ahead two).
+Both tracked diffs and the index were empty. Root instructions, README, current
+architecture, archived chronology, integration ownership, CI/release workflows,
+implementation and broader refactor history were reviewed; no nested AGENTS.md
+exists. No historical commit/push permission was used.
+
+`client_config.go` now owns the real root ClientConfig, current
+ErrInvalidClientConfig and the whole pre-dial validation/default/pin-copy closure.
+Declaration/comment/function bodies are unchanged from `client.go`. This is the
+client counterpart of the already established `server_config.go` owner, not a
+new internal package or an attempt to unify distinct client/server error and
+liveness policies. `client.go` retains its complete establishment, cancellation,
+socket cleanup and stopped-runtime ownership-transfer transaction.
+`client_config_test.go` adds default/explicit snapshots, caller/pin copy
+boundaries, negative settings, exact and over-limit liveness/overflow cases,
+validation priority and current/nil sentinel-chain regressions.
+
+Four complete public-only closures move to `integrationtests/api/`: Header
+constructor/validation/wire layout, TLV atomic limit/ownership, the reference
+encoder/equivalence suite with its benchmark/sink, and the decoder-shape benchmark.
+Only package/import declarations change; existing function bodies, assertions,
+helper closure and benchmark workloads are preserved. Root `tlv_test.go` needs
+private alignment; `message_extended_types_test.go` needs private inbound dispatch;
+client tests need injected dialers/private state. Those complete closures remain
+root rather than exposing private seams or scattering individual assertions.
+
+No public aliases, API/error/default/ownership changes, internal algorithms,
+wire/crypto changes, dependency/version/fixture changes or runtime lock/state
+moves. The earlier raw ErrorMessage wire break remains an existing migration
+constraint, not a change in this batch. Documentation removes stale fixed file
+counts and distinguishes historical checks from current ownership.
+
+Validation and remaining assurance are recorded in the current layout. No stage,
+commit, push, tag, release or release-note/candidate file is part of this batch.
 
 ## Current checkpoint: public consumer contract suite
 

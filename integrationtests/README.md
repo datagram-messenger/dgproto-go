@@ -2,10 +2,10 @@
 
 ## Current ownership
 
-`api/` currently contains nine tracked test files in `package dgproto_test`;
-the top-level TCP layer contains four tracked test/helper files in
-`package integrationtests`, importing the public library as `dgproto`.
-These are source inventory/ownership observations, not fresh test results.
+`api/` owns public primitive/codec contracts in `package dgproto_test`;
+the top-level TCP/runtime layer uses `package integrationtests`, importing the
+public library as `dgproto`. Ownership is defined by dependency closures rather
+than fixed file counts. This inventory is not a claim of fresh test results.
 The [current package layout](../docs/architecture/package-layout.md) records
 the completed root/default-leaf graph and optional tagged keylog boundary.
 
@@ -21,7 +21,8 @@ and vet, and full race passed on all seven packages. Race used process-local
 MinGW PATH and GCC 16.2.0 (MSYS2 Rev4). Formatting/diff checks were empty;
 DGPROTO_KEYLOG was unset. These are local results, not minimum-Go/other-OS,
 fuzz-campaign, sustained-benchmark, vulnerability or interoperability evidence.
-No tests were rerun for the current documentation-only synchronization.
+That historical documentation-only synchronization did not rerun tests;
+validation for later implementation/test changes is recorded in the layout history.
 
 ## Current selectors and helper boundaries
 
@@ -48,6 +49,22 @@ Run `go test -count=1 ./integrationtests/...` from the repository root. Plain
   budgets are checked without access to private implementation seams. Header and
   control codec benchmarks live with these tests; use
   `go test -run '^$' -bench 'Benchmark(HeaderBoundary|ControlMessageBoundary)' -benchmem ./integrationtests/api`.
+- `api/header_test.go`: complete public constructor/size/validation/error,
+  literal wire layout and receive-reserved-field closure, with unchanged bodies.
+- `api/tlv_decode_limits_test.go`: atomic malformed-suffix rejection, exact
+  nil/owned shapes and caller/protocol/dense limits.
+- `api/tlv_encode_regression_test.go`: public reference encoder, edge/error and
+  copy-equivalence suite plus `BenchmarkEncodeTLVsPatch` and its sink.
+- `api/tlv_decode_benchmark_test.go`: `BenchmarkDecodeTLVShapes`, including
+  empty/tiny/dense/maximum/malformed public decoder workloads.
+  These four complete closures require only the public library and stdlib;
+  imports enforce external visibility without changing test bodies.
+  Run `go test -run 'TestHeader|TestNewHeader|TestDecodeTLV|TestEncodeTLV' -count=1 ./integrationtests/api`
+  and `go test -run '^$' -bench 'Benchmark(EncodeTLVsPatch|DecodeTLVShapes)' -benchmem -benchtime=5s ./integrationtests/api`.
+- `connection_send_contract_test.go`, `connection_io_contract_test.go` and
+  `server_admission_contract_test.go`: established runtime queue/write/cancellation,
+  partial I/O and callback contracts; complete public fixtures stay in
+  `runtime_helpers_test.go`.
 - `tcp_test.go`: unchanged public-only oversized-header, EOF/malformed-frame and
   cancellation probes using `net.Pipe`.
 - `tcp_stream_test.go`: fragmented/coalesced reads, canonical partial writes,

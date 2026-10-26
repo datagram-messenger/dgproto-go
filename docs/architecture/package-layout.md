@@ -15,7 +15,7 @@ The current layout is complete for this refactor: root `dgproto` imports
 in default builds, and also `internal/keylog` with `dgproto_keylog`. Each leaf
 imports only stdlib, never root. Root retains public concrete identity, current
 mutable Magic/error variables, validation/copies and atomic session/runtime state.
-`server_config.go`, `static_key.go`, the message variants and Session/Connection
+`client_config.go`, `server_config.go`, `static_key.go`, the message variants and Session/Connection
 file splits organize responsibilities within root; they are not new packages.
 
 Stop cosmetic extraction here. Another package needs an independent cohesive
@@ -49,10 +49,12 @@ on Windows; production still keeps the file open for its process lifetime.
 ## Current ownership
 
 The independently selectable public consumer-contract layer in
-`integrationtests/api/` currently has nine tracked test files in
-`package dgproto_test`. The top-level `integrationtests/` TCP layer has four
-tracked test/helper files in `package integrationtests`. These source inventories
-are not executed-test counts. Mutable-sentinel tests stay serial; no test seams
+`integrationtests/api/` uses `package dgproto_test`. Complete Header validation
+and wire-layout tests and TLV public limit/ownership/reference-encoder suites,
+including both TLV benchmarks and their local helpers, now live there too.
+The top-level `integrationtests/` layer owns public TCP and established-runtime
+send/I/O/admission contracts in `package integrationtests`. Avoid stale fixed
+file counts; source inventories are not executed-test counts. Mutable-sentinel tests stay serial; no test seams
 are exported. [Integration test ownership](../../integrationtests/README.md) records
 selectors, helper ownership and non-parallel sentinel requirements.
 
@@ -127,10 +129,42 @@ Full race covered all seven packages with process-local `C:/msys64/mingw64/bin` 
 Rev4). Git blob equality established all six moves as byte-identical. Plain root
 `go test` no longer selects these contracts; use `./integrationtests/...` or `./...`.
 
-The current documentation synchronization changes no Go code or runnable
-examples. Validate links/anchors, fences, source paths/contracts and both diffs;
-full tests are intentionally skipped for this prose-only step. Historical passes
-above are not fresh validation of the current checkout.
+## Fresh completion-batch validation
+
+The client configuration closure and four complete public primitive test/benchmark
+closures were implemented and reviewed against `65daebc`, not just documented.
+PowerShell source comparison confirms the normalization function and all moved
+helper/test/benchmark bodies are identical; only package/imports change for tests.
+No parser/leaf algorithm or concurrency code changes, so no fuzz campaign was
+required for this batch (full tests execute seeds, not campaigns).
+
+Go 1.26.5 windows/amd64, CGO_ENABLED=1. Focused pre-change Header/TLV/DialContext
+tests passed. Post-change focused ClientConfig/DialContext/Header/TLV tests,
+full uncached default and `dgproto_keylog` tests, both vet configurations, and
+JSON vectors/WIRE/HS/SESS/P0 selectors passed. Full default and tagged race passed
+with process-local MinGW PATH and GCC 16.2.0 (MSYS2 Rev4). Initial post-move
+compilation found stale `errors`/`time` imports in `client.go`; those imports were
+removed, then gates rerun without weakening tests. Formatting and both whitespace
+diffs were empty; index remains empty and no Git publication action was taken.
+
+`BenchmarkEncodeTLVsPatch` ran before/after with `-run '^$' -benchmem
+-benchtime=5s -count=3`, at root before and `./integrationtests/api` after.
+All shapes retain one allocation: Long 65536 B, Typical 192 B, ManyEmpty 16384 B.
+Before medians were 20924/124.7/31868 ns; after medians 23182/120.8/32242 ns.
+The first after Long sample (35455 ns) overlapped the race gate and is confounded;
+these measurements establish unchanged allocation budgets, not an optimization or
+statistically established CPU regression. Production TLV code/boundary is unchanged.
+
+Structural stop condition: no currently justified additional production package
+split remains. TCP lane/watch closure and Session/Connection/Server transactions
+remain whole; client/server settings keep their distinct validation policies.
+Root TLV alignment, extended-message dispatch, injected client dialers and private
+runtime/crypto fixtures cannot move wholesale to the public layer. Future optional
+public suite moves need a fresh complete-helper audit, not individual-test scattering.
+Wider production assurance still needs security-patched minimum-Go/other-OS CI,
+independent exact-revision interoperability (including Error migration), security
+and dependency review, sustained adversarial fuzzing, and measured service budgets
+for load/saturation/shutdown/callbacks; directory completion cannot certify these.
 
 Minimum-line Go 1.25.x, Linux/macOS execution, fresh fuzz campaigns, sustained
 benchmarks, vulnerability scans and independent interoperability/deployment

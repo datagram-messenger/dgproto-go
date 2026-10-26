@@ -1,6 +1,8 @@
-package dgproto
+package dgproto_test
 
 import (
+	. "github.com/datagram-messenger/dgproto-go"
+
 	"encoding/binary"
 	"errors"
 	"reflect"
