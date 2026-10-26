@@ -1,10 +1,11 @@
-package dgproto
+package dgproto_test
 
 import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
+	. "github.com/datagram-messenger/dgproto-go"
 	"testing"
 )
 

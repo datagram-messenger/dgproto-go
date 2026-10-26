@@ -1,4 +1,4 @@
-package dgproto
+package dgproto_test
 
 import (
 	"bytes"
@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	. "github.com/datagram-messenger/dgproto-go"
 	"strconv"
 	"strings"
 	"testing"

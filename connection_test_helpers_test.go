@@ -9,6 +9,19 @@ import (
 
 const connectionTestTimeout = time.Second
 
+// Shared by Connection and Server white-box lifecycle/queue owners.
+func receiveBounded[T any](t *testing.T, result <-chan T) T {
+	t.Helper()
+	select {
+	case value := <-result:
+		return value
+	case <-time.After(connectionTestTimeout):
+		t.Fatal("operation did not complete")
+		var zero T
+		return zero
+	}
+}
+
 func testConnectionPair(t *testing.T, config ConnectionConfig) (*Connection, *Session, *TCPTransport, func()) {
 	t.Helper()
 	localConn, peerConn := net.Pipe()

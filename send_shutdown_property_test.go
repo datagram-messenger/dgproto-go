@@ -6,7 +6,6 @@ import (
 	"net"
 	"sync"
 	"testing"
-	"time"
 )
 
 func TestSendShutdownStateMachineProperties(t *testing.T) {
@@ -183,17 +182,5 @@ func assertTerminalSendRejection(t *testing.T, connection *Connection, send func
 		if err := send(connection, context.Background(), uint64(i+100)); !errors.Is(err, ErrConnectionClosed) {
 			t.Fatalf("post-terminal send %d = %v, want %v", i, err, ErrConnectionClosed)
 		}
-	}
-}
-
-func receiveBounded[T any](t *testing.T, result <-chan T) T {
-	t.Helper()
-	select {
-	case value := <-result:
-		return value
-	case <-time.After(connectionTestTimeout):
-		t.Fatal("operation did not complete")
-		var zero T
-		return zero
 	}
 }

@@ -1,9 +1,10 @@
 //go:build !dgproto_keylog
 
-package dgproto
+package dgproto_test
 
 import (
 	"errors"
+	. "github.com/datagram-messenger/dgproto-go"
 	"os"
 	"path/filepath"
 	"testing"

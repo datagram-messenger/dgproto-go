@@ -1,12 +1,13 @@
-package dgproto
+package dgproto_test
 
 import (
+	. "github.com/datagram-messenger/dgproto-go"
 	"net"
 	"testing"
 )
 
-// Public stream and cancellation tests live in integrationtests; constructor
-// misuse requiring private Session construction remains in this root suite.
+// Constructor misuse is a public contract: a zero Session is a public concrete
+// value, not a reason to keep this independent suite in the implementation package.
 
 func TestNewConnectionNilPanics(t *testing.T) {
 	key, err := GenerateStaticKey()

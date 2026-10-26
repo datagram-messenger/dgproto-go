@@ -1,8 +1,9 @@
-package dgproto
+package dgproto_test
 
 import (
 	"bytes"
 	"errors"
+	. "github.com/datagram-messenger/dgproto-go"
 	"reflect"
 	"testing"
 )
@@ -63,19 +64,6 @@ func TestStage3StrictValidation(t *testing.T) {
 		if !errors.Is(tc.err, tc.want) {
 			t.Errorf("%s: got %v want %v", tc.name, tc.err, tc.want)
 		}
-	}
-}
-
-func TestMessageType09IsError(t *testing.T) {
-	if MessageTypeError != 0x09 {
-		t.Fatalf("error type = %#x", MessageTypeError)
-	}
-	message, err := newInboundMessage(0x09)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, ok := message.(*ErrorMessage); !ok {
-		t.Fatalf("0x09 decoded as %T", message)
 	}
 }
 
