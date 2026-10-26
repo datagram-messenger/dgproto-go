@@ -85,6 +85,11 @@ Future profiles may substitute layers only after separate specification.
 | `bytes`   | variable     | Length-prefixed opaque byte string (see TLV)   |
 | `string`  | variable     | UTF-8 encoded, length-prefixed as `bytes`      |
 
+Exception: ErrorMessage (`0x09`) context is the raw UTF-8 remainder after its
+`code:u16 LE`, not length-prefixed and not TLV. Empty context and embedded NUL
+are valid. Its maximum context is 65477 **bytes** at zero frame padding;
+subtract actual frame padding from that budget. SessionClose remains TLV-backed.
+
 ### 2.2 Byte Ordering
 
 All multi-byte integer fields in DGProto v1 are encoded **Little-Endian**,

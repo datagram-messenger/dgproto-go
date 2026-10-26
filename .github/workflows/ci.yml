@@ -67,6 +67,9 @@ jobs:
       - name: Test with race detector
         run: go test -race -count=1 ./...
 
+      - name: Test with race detector and dgproto_keylog build tag
+        run: go test -race -tags dgproto_keylog -count=1 ./...
+
   keylog:
     name: Keylog build tag (Linux)
     runs-on: ubuntu-latest
@@ -83,6 +86,9 @@ jobs:
 
       - name: Test with dgproto_keylog build tag
         run: go test -tags dgproto_keylog -count=1 ./...
+
+      - name: Vet with dgproto_keylog build tag
+        run: go vet -tags dgproto_keylog ./...
 
   windows:
     name: Tests (Windows)

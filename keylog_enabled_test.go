@@ -4,27 +4,24 @@ package dgproto
 
 import (
 	"os"
+	"os/exec"
 	"strings"
-	"sync"
 	"testing"
 )
 
 func TestKeyLogRecordsCommittedRekeyEpochs(t *testing.T) {
-	path := t.TempDir() + "/keys.log"
-	keylogOnce = sync.Once{}
-	keylogMu = sync.Mutex{}
-	keylogWriter = nil
-	keylogActive = false
-	t.Setenv("DGPROTO_KEYLOG", path)
-	t.Cleanup(func() {
-		if keylogWriter != nil {
-			_ = keylogWriter.Close()
+	// The sink is process-wide and intentionally has no reset/close API.
+	// Isolate initialization instead of reaching into its private state.
+	if os.Getenv("DGPROTO_KEYLOG_REKEY_TEST") != "1" {
+		path := t.TempDir() + "/keys.log"
+		cmd := exec.Command(os.Args[0], "-test.run=^TestKeyLogRecordsCommittedRekeyEpochs$", "-test.timeout=15s")
+		cmd.Env = append(os.Environ(), "DGPROTO_KEYLOG_REKEY_TEST=1", "DGPROTO_KEYLOG="+path)
+		if output, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("isolated rekey test: %v\n%s", err, output)
 		}
-		keylogOnce = sync.Once{}
-		keylogMu = sync.Mutex{}
-		keylogWriter = nil
-		keylogActive = false
-	})
+		return
+	}
+	path := os.Getenv("DGPROTO_KEYLOG")
 
 	sender, receiver := testSessions(t)
 	sender.rekeyFrameLimit = 1
@@ -37,6 +34,13 @@ func TestKeyLogRecordsCommittedRekeyEpochs(t *testing.T) {
 	}
 	if frame.Header.MessageType != MessageTypeRekeyInit {
 		t.Fatalf("message type = 0x%02x, want rekey", frame.Header.MessageType)
+	}
+	pending, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(pending), " send 2 ") || strings.Contains(string(pending), " recv 2 ") {
+		t.Fatal("pending rekey logged before commit")
 	}
 	if err := sender.MarkRekeySent(frame); err != nil {
 		t.Fatal(err)

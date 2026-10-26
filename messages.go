@@ -1,10 +1,10 @@
 package dgproto
 
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
-	"unicode/utf8"
+
+	"github.com/datagram-messenger/dgproto-go/internal/wire"
 )
 
 const (
@@ -16,11 +16,11 @@ const (
 	// HandshakeFinishFixedSize is the 64-byte Noise XX final-flight size.
 	HandshakeFinishFixedSize = 64
 	// PingPongSize is the fixed ping or pong payload size.
-	PingPongSize = 9
+	PingPongSize = wire.PingPongSize
 	// RekeyInitSize is the fixed rekey payload size.
-	RekeyInitSize = 36
+	RekeyInitSize = wire.RekeyInitSize
 	// MaxAckSequences is the largest count representable by the Ack wire field.
-	MaxAckSequences = 255
+	MaxAckSequences = wire.MaxAckSequences
 	// MaxEncryptedPayloadSize excludes the header and 16-byte AEAD tag.
 	MaxEncryptedPayloadSize = MaxFrameSize - HeaderSize - AEADTagSize
 	// MaxHandshakePayloadSize excludes the header; handshakes have no outer tag.
@@ -30,8 +30,6 @@ const (
 	// MaxReasonSize is the largest text value whose aligned TLV and message code
 	// fit in the DGProto v1 maximum encrypted frame payload.
 	MaxReasonSize = MaxEncryptedPayloadSize - 2 - TLVHeaderSize - 1
-
-	textTLVType = 1
 )
 
 var (
@@ -65,178 +63,6 @@ var (
 	ErrResumptionTicket = errors.New("dgproto: invalid resumption ticket")
 )
 
-// NoisePattern identifies a Noise handshake pattern in the wire wrapper.
-// DGProto v1 MVP permits only NoisePatternXX.
-type NoisePattern uint8
-
-const (
-	// NoisePatternXX identifies the Noise XX pattern used by DGProto v1 MVP.
-	NoisePatternXX NoisePattern = 1
-	// NoisePatternIK is retained for source compatibility with historical code.
-	// DGProto v1 MVP serializers and parsers reject it.
-	NoisePatternIK NoisePattern = 2
-)
-
-// HandshakeInit is the explicitly defined outer wrapper around Noise message 1.
-type HandshakeInit struct {
-	// Pattern identifies the wrapped Noise handshake pattern.
-	Pattern NoisePattern
-	// ClientEphemeral is the 32-byte client ephemeral public key.
-	ClientEphemeral [32]byte
-	// NoisePayload contains Noise handshake bytes.
-	NoisePayload []byte
-}
-
-// MarshalBinary encodes m as a handshake-init payload and returns owned storage.
-func (m HandshakeInit) MarshalBinary() ([]byte, error) {
-	if m.Pattern != NoisePatternXX {
-		return nil, fmt.Errorf("%w: DGProto v1 MVP requires Noise XX, got 0x%02x", ErrInvalidNoisePattern, m.Pattern)
-	}
-	if len(m.NoisePayload) != 0 {
-		return nil, ErrUnexpectedNoiseData
-	}
-	total := HandshakeInitFixedSize + len(m.NoisePayload)
-	if total > MaxHandshakePayloadSize {
-		return nil, fmt.Errorf("%w: got %d, limit %d", ErrMessageLength, total, MaxHandshakePayloadSize)
-	}
-	if total%4 != 0 {
-		return nil, ErrHandshakeAlignment
-	}
-	buf := make([]byte, total)
-	buf[0] = byte(m.Pattern)
-	copy(buf[4:36], m.ClientEphemeral[:])
-	copy(buf[36:], m.NoisePayload)
-	return buf, nil
-}
-
-// UnmarshalBinary decodes a handshake-init payload and copies NoisePayload.
-func (m *HandshakeInit) UnmarshalBinary(data []byte) error {
-	if len(data) < HandshakeInitFixedSize {
-		return fmt.Errorf("%w: got %d, want at least %d", ErrMessageTooShort, len(data), HandshakeInitFixedSize)
-	}
-	if len(data) > MaxHandshakePayloadSize {
-		return fmt.Errorf("%w: got %d, limit %d", ErrMessageLength, len(data), MaxHandshakePayloadSize)
-	}
-	if len(data)%4 != 0 {
-		return ErrHandshakeAlignment
-	}
-	pattern := NoisePattern(data[0])
-	if pattern != NoisePatternXX {
-		return fmt.Errorf("%w: DGProto v1 MVP requires Noise XX, got 0x%02x", ErrInvalidNoisePattern, pattern)
-	}
-	if data[1] != 0 || data[2] != 0 || data[3] != 0 {
-		return ErrMessageReserved
-	}
-	if len(data) != HandshakeInitFixedSize {
-		return ErrUnexpectedNoiseData
-	}
-	var ephemeral [32]byte
-	copy(ephemeral[:], data[4:36])
-	*m = HandshakeInit{Pattern: pattern, ClientEphemeral: ephemeral, NoisePayload: append([]byte(nil), data[36:]...)}
-	return nil
-}
-
-// HandshakeResponse is the defined outer wrapper around the server Noise flight.
-type HandshakeResponse struct {
-	// ServerEphemeral is the 32-byte server ephemeral public key.
-	ServerEphemeral [32]byte
-	// NoisePayload contains Noise handshake bytes.
-	NoisePayload []byte
-}
-
-// MarshalBinary encodes the exact 96-byte MVP handshake response and returns owned storage.
-func (m HandshakeResponse) MarshalBinary() ([]byte, error) {
-	total := HandshakeResponseFixedSize + len(m.NoisePayload)
-	if total != HandshakeResponseFixedSize+64 {
-		return nil, fmt.Errorf("%w: got %d, want %d", ErrMessageLength, total, HandshakeResponseFixedSize+64)
-	}
-	buf := make([]byte, total)
-	copy(buf[:32], m.ServerEphemeral[:])
-	copy(buf[32:], m.NoisePayload)
-	return buf, nil
-}
-
-// UnmarshalBinary decodes exactly one 96-byte MVP handshake response and copies NoisePayload.
-func (m *HandshakeResponse) UnmarshalBinary(data []byte) error {
-	if len(data) != HandshakeResponseFixedSize+64 {
-		return fmt.Errorf("%w: got %d, want %d", ErrMessageLength, len(data), HandshakeResponseFixedSize+64)
-	}
-	var ephemeral [32]byte
-	copy(ephemeral[:], data[:32])
-	*m = HandshakeResponse{ServerEphemeral: ephemeral, NoisePayload: append([]byte(nil), data[32:]...)}
-	return nil
-}
-
-// HandshakeFinish carries the third and final Noise XX flight.
-type HandshakeFinish struct {
-	// NoisePayload is the fixed 64-byte final Noise XX flight.
-	NoisePayload []byte
-}
-
-// MarshalBinary validates and copies the fixed-size final Noise XX flight.
-func (m HandshakeFinish) MarshalBinary() ([]byte, error) {
-	if len(m.NoisePayload) != HandshakeFinishFixedSize {
-		return nil, fmt.Errorf("%w: got %d, want %d", ErrMessageLength, len(m.NoisePayload), HandshakeFinishFixedSize)
-	}
-	return append([]byte(nil), m.NoisePayload...), nil
-}
-
-// UnmarshalBinary decodes and copies the fixed-size final Noise XX flight.
-func (m *HandshakeFinish) UnmarshalBinary(data []byte) error {
-	if len(data) != HandshakeFinishFixedSize {
-		return fmt.Errorf("%w: got %d, want %d", ErrMessageLength, len(data), HandshakeFinishFixedSize)
-	}
-	*m = HandshakeFinish{NoisePayload: append([]byte(nil), data...)}
-	return nil
-}
-
-// EncryptedData is the application envelope carried inside an encrypted frame.
-type EncryptedData struct {
-	// StreamID identifies the application stream.
-	StreamID uint16
-	// AppMessageType identifies the application-defined message kind.
-	AppMessageType uint8
-	// Fields contains uniquely typed application TLVs.
-	Fields []TLV
-}
-
-// MarshalBinary encodes m, rejecting duplicate field types, and returns owned storage.
-func (m EncryptedData) MarshalBinary() ([]byte, error) {
-	if err := rejectDuplicateTLVs(m.Fields); err != nil {
-		return nil, err
-	}
-	fields, err := EncodeTLVs(m.Fields)
-	if err != nil {
-		return nil, err
-	}
-	if len(fields) > MaxEncryptedPayloadSize-4 {
-		return nil, fmt.Errorf("%w: got %d, limit %d", ErrMessageLength, 4+len(fields), MaxEncryptedPayloadSize)
-	}
-	buf := make([]byte, 4, 4+len(fields))
-	binary.LittleEndian.PutUint16(buf[:2], m.StreamID)
-	buf[2] = m.AppMessageType
-	return append(buf, fields...), nil
-}
-
-// UnmarshalBinary decodes data into m and copies all TLV values.
-func (m *EncryptedData) UnmarshalBinary(data []byte) error {
-	if len(data) < 4 {
-		return fmt.Errorf("%w: got %d, want at least 4", ErrMessageTooShort, len(data))
-	}
-	if data[3] != 0 {
-		return ErrMessageReserved
-	}
-	fields, err := DecodeTLVs(data[4:], MaxEncryptedPayloadSize-4)
-	if err != nil {
-		return err
-	}
-	if err := rejectDuplicateTLVs(fields); err != nil {
-		return err
-	}
-	*m = EncryptedData{StreamID: binary.LittleEndian.Uint16(data[:2]), AppMessageType: data[2], Fields: fields}
-	return nil
-}
-
 // ResumptionTicket is a wire-registry representation reserved for post-MVP.
 // The MVP Session API rejects this message type.
 type ResumptionTicket struct {
@@ -252,8 +78,7 @@ func (m ResumptionTicket) MarshalBinary() ([]byte, error) {
 		return nil, fmt.Errorf("%w: ticket length %d", ErrResumptionTicket, len(m.Ticket))
 	}
 	buf := make([]byte, len(m.Ticket)+8)
-	copy(buf, m.Ticket)
-	binary.LittleEndian.PutUint64(buf[len(m.Ticket):], m.ValidUntil)
+	wire.PutTicket(buf, m.Ticket, m.ValidUntil)
 	return buf, nil
 }
 
@@ -262,19 +87,8 @@ func (m *ResumptionTicket) UnmarshalBinary(data []byte) error {
 	if len(data) < 9 || len(data) > MaxEncryptedPayloadSize {
 		return fmt.Errorf("%w: payload length %d", ErrResumptionTicket, len(data))
 	}
-	ticketEnd := len(data) - 8
-	*m = ResumptionTicket{Ticket: append([]byte(nil), data[:ticketEnd]...), ValidUntil: binary.LittleEndian.Uint64(data[ticketEnd:])}
-	return nil
-}
-
-func rejectDuplicateTLVs(fields []TLV) error {
-	var seen [256]bool
-	for _, field := range fields {
-		if seen[field.Type] {
-			return fmt.Errorf("%w: 0x%02x", ErrDuplicateMessageTLV, field.Type)
-		}
-		seen[field.Type] = true
-	}
+	ticket, validUntil := wire.ReadTicket(data)
+	*m = ResumptionTicket{Ticket: append([]byte(nil), ticket...), ValidUntil: validUntil}
 	return nil
 }
 
@@ -289,10 +103,7 @@ type PingPong struct {
 // MarshalBinary encodes m as the fixed-size ping or pong payload.
 func (m PingPong) MarshalBinary() ([]byte, error) {
 	buf := make([]byte, PingPongSize)
-	if m.IsResponse {
-		buf[0] = 1
-	}
-	binary.LittleEndian.PutUint64(buf[1:], m.Nonce)
+	wire.PutPingPong(buf, m.IsResponse, m.Nonce)
 	return buf, nil
 }
 
@@ -304,7 +115,8 @@ func (m *PingPong) UnmarshalBinary(data []byte) error {
 	if data[0] > 1 {
 		return fmt.Errorf("%w: 0x%02x", ErrInvalidPingResponse, data[0])
 	}
-	*m = PingPong{IsResponse: data[0] == 1, Nonce: binary.LittleEndian.Uint64(data[1:])}
+	response, nonce := wire.ReadPingPong(data)
+	*m = PingPong{IsResponse: response, Nonce: nonce}
 	return nil
 }
 
@@ -319,11 +131,8 @@ func (m Ack) MarshalBinary() ([]byte, error) {
 	if len(m.Sequences) < 1 || len(m.Sequences) > MaxAckSequences {
 		return nil, fmt.Errorf("%w: got %d", ErrAckCount, len(m.Sequences))
 	}
-	buf := make([]byte, 1+8*len(m.Sequences))
-	buf[0] = byte(len(m.Sequences))
-	for i, sequence := range m.Sequences {
-		binary.LittleEndian.PutUint64(buf[1+8*i:], sequence)
-	}
+	buf := make([]byte, wire.AckSize(len(m.Sequences)))
+	wire.PutAck(buf, m.Sequences)
 	return buf, nil
 }
 
@@ -336,13 +145,11 @@ func (m *Ack) UnmarshalBinary(data []byte) error {
 	if count < 1 || count > MaxAckSequences {
 		return fmt.Errorf("%w: got %d", ErrAckCount, count)
 	}
-	if len(data) != 1+8*count {
-		return fmt.Errorf("%w: got %d, want %d", ErrMessageLength, len(data), 1+8*count)
+	if len(data) != wire.AckSize(count) {
+		return fmt.Errorf("%w: got %d, want %d", ErrMessageLength, len(data), wire.AckSize(count))
 	}
 	sequences := make([]uint64, count)
-	for i := range sequences {
-		sequences[i] = binary.LittleEndian.Uint64(data[1+8*i:])
-	}
+	wire.ReadAck(data, sequences)
 	*m = Ack{Sequences: sequences}
 	return nil
 }
@@ -363,8 +170,7 @@ func (m RekeyInit) MarshalBinary() ([]byte, error) {
 		return nil, ErrInvalidEpoch
 	}
 	buf := make([]byte, RekeyInitSize)
-	binary.LittleEndian.PutUint32(buf[:4], m.Epoch)
-	copy(buf[4:], m.KeyConfirm[:])
+	wire.PutRekeyInit(buf, m.Epoch, m.KeyConfirm)
 	return buf, nil
 }
 
@@ -373,108 +179,10 @@ func (m *RekeyInit) UnmarshalBinary(data []byte) error {
 	if len(data) != RekeyInitSize {
 		return fmt.Errorf("%w: got %d, want %d", ErrMessageLength, len(data), RekeyInitSize)
 	}
-	epoch := binary.LittleEndian.Uint32(data[:4])
+	epoch, confirm := wire.ReadRekeyInit(data)
 	if epoch == 0 {
 		return ErrInvalidEpoch
 	}
-	var confirm [32]byte
-	copy(confirm[:], data[4:])
 	*m = RekeyInit{Epoch: epoch, KeyConfirm: confirm}
 	return nil
-}
-
-// SessionClose requests graceful termination with an optional UTF-8 reason.
-type SessionClose struct {
-	// Code is an MVP close code in the range zero through three.
-	Code uint16
-	// Reason is optional UTF-8 close text.
-	Reason string
-}
-
-// MarshalBinary encodes the close code and optional UTF-8 reason.
-func (m SessionClose) MarshalBinary() ([]byte, error) {
-	if m.Code > 3 {
-		return nil, fmt.Errorf("%w: 0x%04x", ErrInvalidCloseCode, m.Code)
-	}
-	return marshalTextMessage(m.Code, m.Reason)
-}
-
-// UnmarshalBinary decodes a session-close payload into m.
-func (m *SessionClose) UnmarshalBinary(data []byte) error {
-	code, text, err := unmarshalTextMessage(data)
-	if err != nil {
-		return err
-	}
-	if code > 3 {
-		return fmt.Errorf("%w: 0x%04x", ErrInvalidCloseCode, code)
-	}
-	*m = SessionClose{Code: code, Reason: text}
-	return nil
-}
-
-// ErrorMessage reports a recoverable protocol condition with optional context.
-type ErrorMessage struct {
-	// Code identifies the reported protocol condition.
-	Code uint16
-	// Context is optional UTF-8 diagnostic text.
-	Context string
-}
-
-// MarshalBinary encodes the error code and optional UTF-8 context.
-func (m ErrorMessage) MarshalBinary() ([]byte, error) { return marshalTextMessage(m.Code, m.Context) }
-
-// UnmarshalBinary decodes an error-message payload into m.
-func (m *ErrorMessage) UnmarshalBinary(data []byte) error {
-	code, text, err := unmarshalTextMessage(data)
-	if err == nil {
-		*m = ErrorMessage{Code: code, Context: text}
-	}
-	return err
-}
-
-func marshalTextMessage(code uint16, text string) ([]byte, error) {
-	if !utf8.ValidString(text) {
-		return nil, ErrInvalidUTF8
-	}
-	if len(text) > MaxReasonSize {
-		return nil, fmt.Errorf("%w: got %d", ErrReasonTooLong, len(text))
-	}
-	buf := make([]byte, 2)
-	binary.LittleEndian.PutUint16(buf, code)
-	if text == "" {
-		return buf, nil
-	}
-	field, _ := NewTLV(textTLVType, []byte(text))
-	encoded, err := field.MarshalBinary()
-	if err != nil {
-		return nil, err
-	}
-	return append(buf, encoded...), nil
-}
-
-func unmarshalTextMessage(data []byte) (uint16, string, error) {
-	if len(data) < 2 {
-		return 0, "", ErrMessageTooShort
-	}
-	code := binary.LittleEndian.Uint16(data[:2])
-	if len(data) == 2 {
-		return code, "", nil
-	}
-	fields, err := DecodeTLVs(data[2:], align4(TLVHeaderSize+MaxReasonSize))
-	if err != nil {
-		return 0, "", err
-	}
-	if err := rejectDuplicateTLVs(fields); err != nil {
-		return 0, "", err
-	}
-	if len(fields) != 1 {
-		return 0, "", ErrUnknownMessageTLV
-	}
-	if fields[0].Type != textTLVType {
-		return 0, "", fmt.Errorf("%w: 0x%02x", ErrUnknownMessageTLV, fields[0].Type)
-	}
-	if !utf8.Valid(fields[0].Value) {
-		return 0, "", ErrInvalidUTF8
-	}
-	return code, string(fields[0].Value), nil
 }

@@ -1,9 +1,9 @@
 package dgproto
 
 import (
-	"encoding/binary"
 	"errors"
-	"fmt"
+
+	"github.com/datagram-messenger/dgproto-go/internal/tlv"
 )
 
 const (
@@ -41,31 +41,22 @@ type TLV struct {
 
 // NewTLV constructs a TLV and copies value.
 func NewTLV(typ uint8, value []byte) (TLV, error) {
-	if len(value) > MaxTLVValueSize {
-		return TLV{}, fmt.Errorf("%w: got %d bytes", ErrTLVValueTooLarge, len(value))
+	if _, failure := tlv.EncodedLen(len(value)); failure.Kind != tlv.OK {
+		return TLV{}, tlvError(failure)
 	}
 	return TLV{Type: typ, Value: append([]byte(nil), value...)}, nil
 }
 
 // EncodedLen returns the encoded length including zero alignment padding.
 func (t TLV) EncodedLen() (int, error) {
-	if len(t.Value) > MaxTLVValueSize {
-		return 0, fmt.Errorf("%w: got %d bytes", ErrTLVValueTooLarge, len(t.Value))
-	}
-	return align4(TLVHeaderSize + len(t.Value)), nil
+	n, failure := tlv.EncodedLen(len(t.Value))
+	return n, tlvError(failure)
 }
 
 // MarshalBinary encodes t and zero-pads it to a 4-byte boundary.
 func (t TLV) MarshalBinary() ([]byte, error) {
-	n, err := t.EncodedLen()
-	if err != nil {
-		return nil, err
-	}
-	buf := make([]byte, n)
-	buf[0] = t.Type
-	binary.LittleEndian.PutUint16(buf[1:3], uint16(len(t.Value)))
-	copy(buf[TLVHeaderSize:], t.Value)
-	return buf, nil
+	buf, failure := tlv.Marshal(t.Type, t.Value)
+	return buf, tlvError(failure)
 }
 
 // DecodeTLVs decodes exactly one TLV sequence. Protocol-wide size and element
@@ -78,79 +69,63 @@ func (t TLV) MarshalBinary() ([]byte, error) {
 // The normative spec (§2.4) requires parsers to ignore alignment padding.
 // This is distinct from authenticated random frame padding (§3.3).
 func DecodeTLVs(data []byte, maxBytes int) ([]TLV, error) {
-	if len(data) > MaxTLVSequenceSize {
-		return nil, fmt.Errorf("%w: got %d bytes, limit %d", ErrTLVSequenceLimit, len(data), MaxTLVSequenceSize)
+	count, failure := tlv.Validate(data, maxBytes)
+	if failure.Kind != tlv.OK {
+		return nil, tlvError(failure)
 	}
-	if maxBytes > 0 && len(data) > maxBytes {
-		return nil, fmt.Errorf("%w: got %d bytes, limit %d", ErrTLVDecodeLimit, len(data), maxBytes)
-	}
-
-	// Count validated fields before allocating descriptors. Wire bytes are
-	// not a useful estimate of field count for a single large value.
-	count := 0
-	for offset := 0; offset < len(data); {
-		if count == MaxTLVElements {
-			return nil, fmt.Errorf("%w: limit %d", ErrTLVElementLimit, MaxTLVElements)
-		}
-		remaining := len(data) - offset
-		if remaining < TLVHeaderSize {
-			return nil, fmt.Errorf("%w at offset %d: got %d header bytes", ErrTLVTooShort, offset, remaining)
-		}
-
-		valueLen := int(binary.LittleEndian.Uint16(data[offset+1 : offset+TLVHeaderSize]))
-		if valueLen > remaining-TLVHeaderSize {
-			return nil, fmt.Errorf("%w at offset %d: value needs %d bytes, got %d", ErrTLVTruncated, offset, valueLen, remaining-TLVHeaderSize)
-		}
-		unpadded := TLVHeaderSize + valueLen
-		paddingLen := (4 - unpadded%4) % 4
-		if paddingLen > remaining-unpadded {
-			return nil, fmt.Errorf("%w at offset %d: padding needs %d bytes, got %d", ErrTLVTruncated, offset, paddingLen, remaining-unpadded)
-		}
-		count++
-		offset += unpadded + paddingLen
-	}
-
 	out := make([]TLV, count)
 	for i, offset := 0, 0; i < count; i++ {
-		// The first pass validated every boundary; caller input must not be
-		// concurrently mutated, just as with the original single-pass parser.
-		valueLen := int(binary.LittleEndian.Uint16(data[offset+1 : offset+TLVHeaderSize]))
-		end := offset + TLVHeaderSize + valueLen
-		out[i] = TLV{Type: data[offset], Value: append([]byte(nil), data[offset+TLVHeaderSize:end]...)}
-		offset += align4(TLVHeaderSize + valueLen)
+		// Input must remain unchanged between validation and reading. Copy
+		// straight into root descriptors; no intermediate slice is allocated.
+		typ, value, next := tlv.Read(data, offset)
+		out[i] = TLV{Type: typ, Value: append([]byte(nil), value...)}
+		offset = next
 	}
 	return out, nil
 }
 
 // EncodeTLVs encodes fields in order. Duplicate and unknown types are retained.
 func EncodeTLVs(fields []TLV) ([]byte, error) {
-	if len(fields) > MaxTLVElements {
-		return nil, fmt.Errorf("%w: got %d, limit %d", ErrTLVElementLimit, len(fields), MaxTLVElements)
+	if failure := tlv.CheckCount(len(fields)); failure.Kind != tlv.OK {
+		return nil, tlvError(failure)
 	}
-
 	total := 0
 	for _, field := range fields {
-		n, err := field.EncodedLen()
-		if err != nil {
-			return nil, err
+		next, kind := tlv.AddLen(total, len(field.Value))
+		if kind != tlv.OK {
+			return nil, tlvError(tlv.Failure{Kind: kind, Got: len(field.Value), Limit: tlv.MaxSequenceSize})
 		}
-		if n > MaxTLVSequenceSize-total {
-			return nil, fmt.Errorf("%w: limit %d", ErrTLVSequenceLimit, MaxTLVSequenceSize)
-		}
-		total += n
+		total = next
 	}
-
 	buf := make([]byte, total)
 	offset := 0
 	for _, field := range fields {
-		// The first pass validated every value and the complete sequence.
-		// The owned zeroed output also supplies alignment padding.
-		buf[offset] = field.Type
-		binary.LittleEndian.PutUint16(buf[offset+1:offset+TLVHeaderSize], uint16(len(field.Value)))
-		copy(buf[offset+TLVHeaderSize:], field.Value)
-		offset += align4(TLVHeaderSize + len(field.Value))
+		offset = tlv.Write(buf, offset, field.Type, field.Value)
 	}
 	return buf, nil
 }
 
-func align4(n int) int { return (n + 3) &^ 3 }
+func align4(n int) int { return tlv.Align4(n) }
+
+// Resolve sentinels at the failing call, not package initialization: public
+// error variables remain dynamically replaceable, including nil values.
+func tlvError(failure tlv.Failure) error {
+	var sentinel error
+	switch failure.Kind {
+	case tlv.OK:
+		return nil
+	case tlv.TooShort:
+		sentinel = ErrTLVTooShort
+	case tlv.TruncatedValue, tlv.TruncatedPadding:
+		sentinel = ErrTLVTruncated
+	case tlv.ValueTooLarge:
+		sentinel = ErrTLVValueTooLarge
+	case tlv.DecodeLimit:
+		sentinel = ErrTLVDecodeLimit
+	case tlv.SequenceTooLarge, tlv.SequenceFull:
+		sentinel = ErrTLVSequenceLimit
+	case tlv.TooManyElements, tlv.ElementsFull:
+		sentinel = ErrTLVElementLimit
+	}
+	return failure.Wrap(sentinel)
+}

@@ -25,6 +25,8 @@ It implements the **draft DGProto v1 strict MVP**. Use it for desktop-client eve
 - **Structured binary messages.** Typed messages and TLV codecs, with application envelopes carrying stream IDs and message types.
 
 > **Status:** Pre-1.0 Go module; DGProto v1 is a draft. Module and protocol versions are independent. Wire compatibility is not yet a stable guarantee; validate other implementations against the exact draft and revisions you use.
+>
+> **0.7.0 migration:** Nonempty ErrorMessage payloads change from historical TLV context to normative raw UTF-8, without negotiation or fallback. Upgrade and roll back both peer generations together; Rust's public Error code remains limited to 0–255. See the [paired migration guide](docs/guides/error-message-migration.md).
 
 [Quick start](#quick-start) · [Contracts](#contracts-worth-knowing) · [Fit and limits](#fit-and-limits) · [Documentation](#documentation)
 
