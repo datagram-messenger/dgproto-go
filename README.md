@@ -14,9 +14,9 @@
 
 </div>
 
-Build two-way communication into your Go application without implementing framing, the Noise handshake, or session rekeying yourself. `dgproto-go` provides **authenticated, encrypted message sessions over persistent TCP connections**, with client and server runtimes and lower-level protocol primitives.
+Build two-way communication into your Go application without implementing framing, the Noise handshake, or session rekeying yourself. `dgproto-go` implements the **draft DGProto v1 strict MVP over TCP**, with client and server runtimes and lower-level protocol primitives.
 
-It implements the **draft DGProto v1 strict MVP**. Use it for desktop-client events, backend command channels, or custom binary protocols where either peer needs to send messages. **It is a protocol/session library, not an application server:** you define accounts, permissions, application messages, and delivery guarantees.
+Use it for desktop-client events, backend command channels, or custom binary protocols where either peer needs to send messages over a persistent connection. **It is a protocol/session library, not an application server:** you define accounts, permissions, application messages, and delivery guarantees.
 
 - **Peer identity, not just encryption.** Noise XX authenticates static-key possession; the TCP client requires a provisioned server-key pin.
 - **Session protection.** ChaCha20-Poly1305 data frames, replay checks, and directional rekeying managed by the connection runtime.
@@ -24,27 +24,23 @@ It implements the **draft DGProto v1 strict MVP**. Use it for desktop-client eve
 - **A lifecycle you control.** Contexts, explicit client `Start`, shutdown APIs, and a retained terminal cause.
 - **Structured binary messages.** Typed messages and TLV codecs, with application envelopes carrying stream IDs and message types.
 
-> **Status:** Pre-1.0 Go module; DGProto v1 is a draft. Module and protocol versions are independent. Wire compatibility is not yet a stable guarantee; validate other implementations against the exact draft and revisions you use.
->
-> **0.7.0 migration:** Nonempty ErrorMessage payloads change from historical TLV context to normative raw UTF-8, without negotiation or fallback. Upgrade and roll back both peer generations together; Rust's public Error code remains limited to 0–255. See the [paired migration guide](docs/guides/error-message-migration.md).
+> **Pre-1.0 / draft:** Wire compatibility is not yet stable. See [compatibility and upgrades](#compatibility-and-upgrades), including the **0.7.0 ErrorMessage wire break**.
 
-[Quick start](#quick-start) · [Contracts](#contracts-worth-knowing) · [Fit and limits](#fit-and-limits) · [Documentation](#documentation)
+[Quick start](#quick-start) · [Fit and limits](#fit-and-limits) · [Contracts](#contracts-worth-knowing) · [Documentation](#documentation)
 
 ## Install
 
-Requires **Go 1.25+**:
+Requires **Go 1.25.0 or newer**, with current security patches:
 
 ```sh
 go get github.com/datagram-messenger/dgproto-go
 ```
 
-Use a security-patched Go toolchain, not just the minimum language version. On Windows, [GO-2026-4971](https://pkg.go.dev/vuln/GO-2026-4971) affects TCP dialing with NUL-containing input; fixes are in Go **1.25.10** and **1.26.3** for their respective release lines.
-
 ## Quick start
 
 ### Try a pinned client/server exchange
 
-Run a self-contained exchange on loopback — no separate service or credentials needed:
+Run a self-contained exchange on loopback — no separate service or pre-provisioned keys needed:
 
 ```sh
 git clone https://github.com/datagram-messenger/dgproto-go.git
@@ -121,15 +117,27 @@ See [sending and ownership](docs/guides/getting-started.md#sending-and-ownership
 
 ## Fit and limits
 
+Choose `dgproto-go` when you control both endpoints, can provision trusted peer keys, and want application-defined binary messages on a long-lived, two-way connection. Stream IDs and message types let you distinguish operations; your application supplies their semantics.
+
 - **TCP, not independent parallel streams.** Handlers run serially per connection. Slow handlers delay later messages; a full handler queue terminates the connection. TCP head-of-line blocking still applies, regardless of stream IDs.
 - **A fixed TCP profile.** Three-flight Noise XX and ChaCha20-Poly1305 only; no QUIC transport, cipher negotiation, 0-RTT, resumption, or traffic obfuscation. Random authenticated cleartext padding is available, with policy owned by the application.
 - **Small, bounded frames.** The total wire frame is at most 65,535 bytes, including the 40-byte header, data-frame tag, and any padding. Application envelopes and TLVs reduce the available application payload further; chunk larger data yourself.
 - **No automatic reconnect.** Reconnection and retry policy belong to the application.
 - **Bounded defaults are a starting point.** Server defaults are queues of 16, 64 concurrent handshakes, and 1024 active connections. Handshake timeout defaults to 10 seconds; read/write/idle timeouts and keepalive are disabled by default. Set and test service-specific limits, downstream budgets, and [timeouts](docs/guides/getting-started.md#production-timeout-guidance) before deployment.
 
+## Compatibility and upgrades
+
+Go module releases and protocol draft versions are independent: the DGProto **v1** name does not promise stable wire compatibility. Match the exact draft and implementation revisions you deploy; the [test vectors](testdata/vectors/README.md) do not establish independent interoperability.
+
+**0.7.0 breaks nonempty `ErrorMessage` wire compatibility:** context changed from historical TLV encoding to raw UTF-8, without negotiation or fallback. Upgrade and roll back both peer generations together. The [migration guide](docs/guides/error-message-migration.md) covers deployment steps, persisted payloads, and Rust's public error-code limit of 0–255.
+
 ## Security
 
 The current profile uses `Noise_XX_25519_ChaChaPoly_SHA256` and ChaCha20-Poly1305 data-frame encryption. Authentication proves key possession, not account identity or permission. Applications own key storage and rotation, authorization, endpoint hardening, and dependency updates; neither the draft nor passing tests establishes production assurance.
+
+Use a security-patched Go toolchain, not just the minimum language version. On Windows, [GO-2026-4971](https://pkg.go.dev/vuln/GO-2026-4971) affects TCP dialing with NUL-containing input; fixes are in Go **1.25.10** and **1.26.3** for their respective release lines.
+
+Optional traffic-secret logging requires both the `dgproto_keylog` build tag and `DGPROTO_KEYLOG` environment variable. Keep the tag out of production builds and the variable unset in ordinary runs; logged secrets expose captured traffic.
 
 **Report vulnerabilities privately**, not in public issues: use the [GitHub security advisory form](https://github.com/datagram-messenger/dgproto-go/security/advisories/new). Read [SECURITY.md](SECURITY.md) for the policy.
 
