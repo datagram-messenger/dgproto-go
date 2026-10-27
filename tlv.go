@@ -86,16 +86,9 @@ func DecodeTLVs(data []byte, maxBytes int) ([]TLV, error) {
 
 // EncodeTLVs encodes fields in order. Duplicate and unknown types are retained.
 func EncodeTLVs(fields []TLV) ([]byte, error) {
-	if failure := tlv.CheckCount(len(fields)); failure.Kind != tlv.OK {
-		return nil, tlvError(failure)
-	}
-	total := 0
-	for _, field := range fields {
-		next, kind := tlv.AddLen(total, len(field.Value))
-		if kind != tlv.OK {
-			return nil, tlvError(tlv.Failure{Kind: kind, Got: len(field.Value), Limit: tlv.MaxSequenceSize})
-		}
-		total = next
+	total, err := encodedTLVsLen(fields)
+	if err != nil {
+		return nil, err
 	}
 	buf := make([]byte, total)
 	offset := 0
@@ -103,6 +96,23 @@ func EncodeTLVs(fields []TLV) ([]byte, error) {
 		offset = tlv.Write(buf, offset, field.Type, field.Value)
 	}
 	return buf, nil
+}
+
+// encodedTLVsLen preserves encoder validation order: count, then each value
+// and running sequence size. It neither reads value bytes nor allocates on success.
+func encodedTLVsLen(fields []TLV) (int, error) {
+	if failure := tlv.CheckCount(len(fields)); failure.Kind != tlv.OK {
+		return 0, tlvError(failure)
+	}
+	total := 0
+	for _, field := range fields {
+		next, kind := tlv.AddLen(total, len(field.Value))
+		if kind != tlv.OK {
+			return 0, tlvError(tlv.Failure{Kind: kind, Got: len(field.Value), Limit: tlv.MaxSequenceSize})
+		}
+		total = next
+	}
+	return total, nil
 }
 
 func align4(n int) int { return tlv.Align4(n) }
