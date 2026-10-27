@@ -35,6 +35,29 @@ For a complete runnable, bounded, client/server exchange, run `go test -run Exam
 
 Messages and reachable buffers are not snapshotted at enqueue. Keep them immutable while pending. A successful write-wait permits reuse; cancellation **after enqueue does not retract** the message and can return before serialization finishes, so cancellation alone does not permit buffer mutation. Use fresh immutable messages for acceptance-only sends. Application correlation, authorization, retries and idempotency remain application-owned; wire Ack is not durable delivery.
 
+### Optional EncryptedData size preflight
+
+Before enqueueing an application envelope, `EncryptedData.EncodedLen()` returns its actual marshaled payload length (4-byte envelope plus aligned TLVs), without allocating on valid success. It excludes the frame header, AEAD tag and random frame padding. `EncryptedData.ValidateFrameSize(padLength)` checks the **complete** wire budget with the exact `uint8` padding you intend to send:
+
+```go
+message := dgproto.EncryptedData{
+    StreamID: 1,
+    AppMessageType: 2,
+    Fields: []dgproto.TLV{{Type: 1, Value: []byte("hello")}},
+}
+const padLength uint8 = 255
+if err := message.ValidateFrameSize(padLength); err != nil {
+    return err
+}
+return conn.SendPaddedAndWait(ctx, message, padLength)
+```
+
+The maximum total frame is 65535 bytes: 40-byte header + encoded payload + 16-byte tag + requested padding. Payload length is `4 + sum(align4(3 + len(value)))`; for one field, values up to 65469 bytes fit with padding 0, or 65217 with padding 255. Alignment means not every payload can use every last budget byte.
+
+Both methods preserve marshaling validation priority: duplicate types first, then TLV count/value/sequence limits, then the envelope limit (`ErrMessageLength`). A message that marshals but is too large with the requested padding wraps `ErrPayloadTooLarge`, matching the codec's oversize diagnostic. `EncodedLen` returns zero on error. Successful calls allocate no storage and do not mutate inputs.
+
+Preflight is optional, not automatically performed by send APIs. It is **not a snapshot, queue/session reservation, successful-send promise, or delivery guarantee**. Inputs must remain unchanged during preflight and through serialization/queued use under the ownership contract above; cancellation after enqueue still does not permit immediate reuse. Preflight lets applications reject known size errors before queueing without changing send behavior. Run the [executable example](../../integrationtests/api/encrypted_data_size_example_test.go) with `go test -run ExampleEncryptedData_ValidateFrameSize -v ./integrationtests/api`.
+
 ## Server
 
 This complete example generates a server static key, creates a TCP listener, and passes the listener to `Server.Serve`:
@@ -115,6 +138,27 @@ For internet-facing deployments, set explicit values to bound resource usage:
 `max(IdleTimeout, KeepaliveInterval + KeepaliveTimeout)`. Zero is permitted.
 The illustrative table is not a universal production budget; choose values from
 measured service constraints and test slow/stalled peers and shutdown.
+
+### Advisory server resource budget snapshot
+
+`server.Stats()` returns a secret-free `ServerStats` value for budget monitoring:
+handshake and connection slot usage/capacity, pending and active ownership counts,
+and whether shutdown has begun. Defaults are 64 handshake slots and 1024 connection
+slots; configure and measure limits for your service. See the
+[executable example](../../server_stats_example_test.go) (`go test -run ExampleServer_Stats -v`).
+
+Channel gauges are independently sampled, not a capacity reservation or an exact
+cross-field transaction. The two map counts and shutdown flag are coherent under
+the ownership mutex: pending includes sockets blocked in `Admission` after Noise
+has released its handshake slot; active means handed-off, server-owned runtimes,
+not live/ready peers. Connection slots are acquired before admission and may remain
+occupied through `OnDisconnect` after active ownership ends. `Close` waits for
+server-owned work; after successful `Close` and exit of `Serve`, quiescent usage
+and ownership counts are zero (capacities remain). Stats exposes no secrets,
+identities, payloads or errors
+and is safe in callbacks; it does not change admission or shutdown policy. Use it
+on servers constructed by `NewServer`, not as a nil/zero-receiver contract.
+
 Set `ReadTimeout` to zero to rely solely on `IdleTimeout` and keepalive
 liveness as the authoritative deadlines.
 

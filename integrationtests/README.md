@@ -2,7 +2,8 @@
 
 ## Current ownership
 
-`api/` owns public primitive/codec contracts in `package dgproto_test`;
+`api/` owns public primitive/codec, constructor and RekeyState contracts,
+the default keylog no-write regression, and public benchmarks in `package dgproto_test`;
 the top-level TCP/runtime layer uses `package integrationtests`, importing the
 public library as `dgproto`. Ownership is defined by dependency closures rather
 than fixed file counts. This inventory is not a claim of fresh test results.
@@ -37,7 +38,8 @@ Run `go test -count=1 ./integrationtests/...` from the repository root. Plain
   the historical TLV codec, without negotiation or fallback. See the
   [paired migration/rollback guide](../docs/guides/error-message-migration.md),
   including Rust's public u8 restriction; suite inventory is not interop proof.
-  These files import only the public library and the standard library.
+  The contract-test files import only the public library and the standard library;
+  this does not describe every benchmark dependency (see `api/benchmark_test.go` below).
   `frame_test.go` owns the complete public frame layout,
   validation/error priority, receive-reserved-field and buffer-ownership suite;
   select it with `go test -run 'TestFrame|TestNewFrame' -count=1 ./integrationtests/api`.
@@ -61,6 +63,21 @@ Run `go test -count=1 ./integrationtests/...` from the repository root. Plain
   imports enforce external visibility without changing test bodies.
   Run `go test -run 'TestHeader|TestNewHeader|TestDecodeTLV|TestEncodeTLV' -count=1 ./integrationtests/api`
   and `go test -run '^$' -bench 'Benchmark(EncodeTLVsPatch|DecodeTLVShapes)' -benchmem -benchtime=5s ./integrationtests/api`.
+- `api/connection_constructor_test.go`: `TestNewConnectionNilPanics` checks
+  nil transport and nil Session constructor misuse, not general configuration validation.
+- `api/rekey_state_test.go`: `TestRekeyStateEpochBoundaries` checks
+  `ComputeKeyConfirm` epoch errors, unchanged state, exact HMAC confirmation bytes,
+  and nil/exhausted state behavior through the public API.
+- `api/keylog_disabled_test.go`: default-build `TestDefaultBuildDoesNotWriteKeyLog`
+  checks that Session construction does not create the requested keylog file.
+  Root `keylog_build_test.go` separately checks the default dependency graph.
+  Run `go test -run 'TestNewConnectionNilPanics|TestRekeyStateEpochBoundaries|TestDefaultBuildDoesNotWriteKeyLog' -count=1 ./integrationtests/api`.
+- `api/benchmark_test.go`: moved general public benchmark coverage and its complete
+  local helpers, `BenchmarkMessengerWireFormats` and `BenchmarkSyntheticWireCodecs`.
+  This file also imports `golang.org/x/crypto/chacha20poly1305` for synthetic
+  comparison envelopes; it is not a public-library-plus-stdlib-only closure.
+  Comparisons are in-memory codec/envelope workloads, not ordinary HTTP/TLS,
+  network throughput or service benchmarks.
 - `connection_send_contract_test.go`, `connection_io_contract_test.go` and
   `server_admission_contract_test.go`: established runtime queue/write/cancellation,
   partial I/O and callback contracts; complete public fixtures stay in
@@ -79,6 +96,16 @@ Keep mutable-sentinel tests non-parallel: they intentionally replace public
 variables, restore them on exit, and must not overlap other users in the same test
 process. Keep the control and TLV-message files together: `messageSentinel` is a
 shared local helper, not an exported testing API.
+
+`server_stats_test.go` owns the public constructed-default/custom-limit and gated
+resource snapshot lifecycle/concurrent Serve/shutdown contracts, reusing the
+`lifecycleListener`, real Noise helper and bounded waits from the existing runtime
+suite. `server_admission_contract_test.go` also checks snapshot cleanup after
+admission rejection and admission/disconnect panic recovery. Root `server_stats.go`
+owns the additive secret-free API; `server_stats_test.go` at root checks coherent
+map handoff (including before Start), while `server_stats_example_test.go` retains
+the executable godoc example. Select with
+`go test -run 'TestServerStats|TestServerAdmissionDisconnect|ExampleServer_Stats' -count=1 ./...`.
 
 Root Server suites keep complete owners together: `server_handshake_test.go`
 (establishment/allowlist/frame validation), `server_runtime_test.go` (slots,

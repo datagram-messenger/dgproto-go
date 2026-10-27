@@ -29,6 +29,13 @@
 // Padding is random cleartext trailing bytes authenticated with the exact header;
 // zero requested length means no padding. Policy remains application-owned.
 //
+// EncryptedData.EncodedLen reports the aligned envelope payload size without
+// allocating on valid success. EncryptedData.ValidateFrameSize optionally checks
+// the complete header/payload/tag budget with the exact requested uint8 padding
+// before enqueueing. Neither method snapshots inputs, reserves queue/session
+// state, nor guarantees a successful send or delivery; keep inputs unchanged
+// through serialization or queued use. Send APIs do not preflight automatically.
+//
 // The first observed terminal cause is retained. Close attempts a close-frame
 // write, not a peer-acknowledged handshake or queue drain. Server Abort closes
 // networking without waiting for callbacks; it cannot kill handler/hook goroutines.

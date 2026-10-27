@@ -43,7 +43,9 @@ selection, absent/failed-open no-retry, and 32 concurrent initial-key pairs plus
 epoch writes. Root rekey integration retains its private Session helpers, using
 an isolated subprocess rather than exposing production reset/close hooks; it also
 rejects logging a pending epoch before commit. The default no-write regression
-remains root. Sink test cleanup closes files before removing temporary directories
+lives in `integrationtests/api/keylog_disabled_test.go`; root `keylog_build_test.go`
+checks that the default dependency graph excludes the sink, including transitive imports.
+Sink test cleanup closes files before removing temporary directories
 on Windows; production still keeps the file open for its process lifetime.
 
 ## Current ownership
