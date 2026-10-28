@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"time"
 
@@ -121,7 +122,10 @@ func pinnedExchange(start bool) (err error) {
 		return err
 	}
 	defer func() {
-		err = errors.Join(err, c.Close())
+		// The peer closes immediately on SessionClose. Its EOF can race the
+		// local close-write completion; that normal teardown is not an exchange
+		// failure. Still report unexpected cleanup errors and join Done below.
+		err = errors.Join(err, pinnedCloseError(c.Close()))
 		join, stopJoin := context.WithTimeout(context.Background(), 2*time.Second)
 		defer stopJoin()
 		select {
@@ -154,6 +158,15 @@ func pinnedExchange(start bool) (err error) {
 		}
 		return dgproto.ErrConnectionClosed
 	}
+}
+
+// Only exact normal termination causes from Connection.Close are benign here;
+// joined or wrapped errors are retained so unexpected cleanup failures survive.
+func pinnedCloseError(err error) error {
+	if err == io.EOF || err == dgproto.ErrConnectionClosed {
+		return nil
+	}
+	return err
 }
 
 // This example intentionally uses an empty envelope: reject extra fields too.
