@@ -51,12 +51,12 @@ Run a self-contained exchange on loopback — no separate service or pre-provisi
 ```sh
 git clone https://github.com/datagram-messenger/dgproto-go.git
 cd dgproto-go
-go test -run "^ExampleDialContext$" -count=1 -timeout=15s -v
+go run ./examples/echo
 ```
 
-Already have a checkout? Run just the `go test` command from its root. A successful run reports `ExampleDialContext` as passing; the test checks that both peers exchanged an application envelope.
+Already have a checkout? Run just the `go run` command from its root. Success prints `authenticated application echo received` only after validating the echoed application envelope and completing cleanup.
 
-The [complete executable example](client_example_test.go) creates loopback peers, allowlists the client key, pins the server key, calls `Start`, exchanges application envelopes, and closes both sides. It uses ephemeral in-memory identities and bounded waits — **a learning example, not production key management or an application server**.
+The [runnable echo command](examples/echo/main.go) creates loopback peers, allowlists the client key, pins the server key, explicitly calls `Start`, exchanges an immutable TLV payload, and closes/joins both sides. It uses ephemeral in-memory identities and bounded waits — **a learning example, not production key management or an application server**. See the [examples index](examples/README.md) for lifecycle details and tests. The existing [godoc exchange](client_example_test.go) is still runnable with `go test -run "^ExampleDialContext$" -count=1 -timeout=15s -v`.
 
 ### Integrate a pinned client
 
@@ -151,6 +151,7 @@ Optional traffic-secret logging requires both the `dgproto_keylog` build tag and
 
 | Start here | What you'll find |
 |------------|------------------|
+| [Runnable examples](examples/README.md) | Self-contained pinned loopback echo and example tests |
 | [Getting started](docs/guides/getting-started.md) | Client/server integration, admission, ownership, shutdown, and timeouts |
 | [Go API reference](https://pkg.go.dev/github.com/datagram-messenger/dgproto-go) | Exported types, configuration, and method contracts |
 | [Architecture](docs/architecture/overview.md) | Framing, rekey flow, replay handling, and concurrency |

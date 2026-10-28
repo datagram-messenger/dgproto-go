@@ -27,7 +27,19 @@ conn.Start(runtimeCtx) // explicit: returned connection is STOPPED.
 
 Canceling establishment after success does not cancel the established lifetime. The caller owns the connection, including closing an unstarted connection. Success confirms the pinned key and a complete **local** final-flight write, not server admission, readiness, or application authorization. Pin provisioning, persistence and rotation are application responsibilities. Metadata is non-secret but may still be privacy-sensitive.
 
-For a complete runnable, bounded, client/server exchange, run `go test -run ExampleDialContext -v`. See [the executable example](../../client_example_test.go). Its ephemeral demo identities are not a production key-management strategy; the example is not a messaging application server.
+## Run a complete loopback echo
+
+From the repository root:
+
+```sh
+go run ./examples/echo
+```
+
+Success prints `authenticated application echo received`. The [complete command](../../examples/echo/main.go) opens only `127.0.0.1:0`, allowlists its generated client key and pins the locally generated server key. It installs the receive handler before explicit `Start`, preflights a padded immutable TLV envelope, and checks the returned stream, operation, field type and payload. The application echo, not `DialContext` or local write completion, is the receipt check.
+
+Establishment and runtime use separate bounded contexts. Cleanup always closes the caller-owned client (even if unstarted), waits for `Done`, closes the server to join its bounded work, closes the owned listener, and joins `Serve`; cleanup join contexts are independent of runtime cancellation. These illustrative loopback budgets are not deployment defaults. See [the examples index](../../examples/README.md) for limits, cancellation behavior and tests.
+
+Ephemeral demo identities are not production provisioning or persistence; the command is not an application server, automatic reconnect, or trust-on-first-use. The existing [godoc exchange](../../client_example_test.go) remains runnable with `go test -run "^ExampleDialContext$" -count=1 -timeout=15s -v`.
 
 ## Sending and ownership
 

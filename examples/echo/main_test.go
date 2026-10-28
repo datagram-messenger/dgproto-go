@@ -1,0 +1,80 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"testing"
+	"time"
+
+	dgproto "github.com/datagram-messenger/dgproto-go"
+)
+
+func TestRunRoundTrip(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	var out bytes.Buffer
+	if err := run(ctx, &out); err != nil {
+		t.Fatal(err)
+	}
+	if got := out.String(); got != successOutput {
+		t.Fatalf("output = %q, want %q", got, successOutput)
+	}
+}
+
+func TestRunCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var out bytes.Buffer
+	if err := run(ctx, &out); !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context.Canceled", err)
+	}
+	if out.Len() != 0 {
+		t.Fatalf("canceled run produced output %q", out.String())
+	}
+}
+
+func TestRunExpired(t *testing.T) {
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+	var out bytes.Buffer
+	if err := run(ctx, &out); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("error = %v, want context.DeadlineExceeded", err)
+	}
+	if out.Len() != 0 {
+		t.Fatalf("expired run produced output %q", out.String())
+	}
+}
+
+func TestValidateEcho(t *testing.T) {
+	valid := func() *dgproto.EncryptedData {
+		return &dgproto.EncryptedData{StreamID: 1, AppMessageType: 2,
+			Fields: []dgproto.TLV{{Type: 1, Value: []byte(demoPayload)}}}
+	}
+	if err := validateEcho(valid(), 2); err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name   string
+		change func(*dgproto.EncryptedData)
+	}{
+		{"stream", func(d *dgproto.EncryptedData) { d.StreamID = 2 }},
+		{"operation", func(d *dgproto.EncryptedData) { d.AppMessageType = 1 }},
+		{"missing payload", func(d *dgproto.EncryptedData) { d.Fields = nil }},
+		{"extra field", func(d *dgproto.EncryptedData) { d.Fields = append(d.Fields, dgproto.TLV{Type: 2}) }},
+		{"field type", func(d *dgproto.EncryptedData) { d.Fields[0].Type = 2 }},
+		{"payload", func(d *dgproto.EncryptedData) { d.Fields[0].Value = []byte("wrong") }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data := valid()
+			tt.change(data)
+			if err := validateEcho(data, 2); err == nil {
+				t.Fatal("invalid reply accepted")
+			}
+		})
+	}
+	if err := validateEcho(nil, 2); err == nil {
+		t.Fatal("nil reply accepted")
+	}
+}
