@@ -43,7 +43,9 @@ selection, absent/failed-open no-retry, and 32 concurrent initial-key pairs plus
 epoch writes. Root rekey integration retains its private Session helpers, using
 an isolated subprocess rather than exposing production reset/close hooks; it also
 rejects logging a pending epoch before commit. The default no-write regression
-remains root. Sink test cleanup closes files before removing temporary directories
+lives in `integrationtests/api/keylog_disabled_test.go`; the root
+`keylog_build_test.go` checks default dependency-graph exclusion of the optional sink.
+Sink test cleanup closes files before removing temporary directories
 on Windows; production still keeps the file open for its process lifetime.
 
 ## Current ownership
@@ -83,7 +85,8 @@ The import/helper audit rejected moving network-looking root tests:
   storage and shared root helpers.
 - `tcp_concurrent_echo_test.go` uses private abort for bounded runtime cleanup.
 - `tcp_test_helpers_test.go` supplies `testTransportFrame` and gated-I/O fixtures
-  to root white-box consumers; root `tcp_test.go` keeps nil Connection misuse.
+  to root white-box consumers; `integrationtests/api/connection_constructor_test.go`
+  owns public nil Connection dependency misuse.
   Public stream/cancellation closures are in `integrationtests/`, not these helpers.
 - `send_api_test.go` exercises private queue/completion state despite its name.
 
