@@ -75,6 +75,66 @@ func TestConnectionLocalCloseSendsSessionClose(t *testing.T) {
 	waitConnection(t, connection)
 }
 
+// Hold the completed local write until the peer's close has reached readLoop.
+// This models a peer reacting to SessionClose before WriteFrame returns.
+type closeWriteBarrierConn struct {
+	net.Conn
+	release <-chan struct{}
+}
+
+func (c closeWriteBarrierConn) Write(p []byte) (int, error) {
+	n, err := c.Conn.Write(p)
+	<-c.release
+	return n, err
+}
+
+func TestConnectionLocalCloseRecordsCauseBeforePeerEOF(t *testing.T) {
+	localConn, peerConn := net.Pipe()
+	localSession, peerSession := testSessions(t)
+	release := make(chan struct{})
+	connection := NewConnection(NewTCPTransport(closeWriteBarrierConn{Conn: localConn, release: release}), localSession, ConnectionConfig{
+		WriteTimeout: connectionTestTimeout,
+	})
+	peerTransport := NewTCPTransport(peerConn)
+	t.Cleanup(func() {
+		_ = peerTransport.Close()
+		_ = connection.Close()
+		waitConnection(t, connection)
+	})
+	defer close(release)
+	connection.Start(context.Background())
+
+	closed := make(chan error, 1)
+	go func() { closed <- connection.Close() }()
+	if _, ok := readConnectionMessage(t, peerTransport, peerSession).(*SessionClose); !ok {
+		t.Fatal("expected SessionClose")
+	}
+	_ = peerTransport.Close()
+	// EOF must be observed while the close write is still held at the barrier.
+	receiveBounded(t, connection.ctx.Done())
+	if !errors.Is(connection.Err(), ErrConnectionClosed) {
+		t.Fatalf("caller close cause: %v", connection.Err())
+	}
+	// Close may report the interrupted write; Err must retain local shutdown.
+	receiveBounded(t, closed)
+}
+
+func TestConnectionLocalClosePreservesEarlierTransportFailure(t *testing.T) {
+	connection, _, peerTransport, cleanup := testConnectionPair(t, ConnectionConfig{})
+	defer cleanup()
+	connection.Start(context.Background())
+	_ = peerTransport.Close()
+	waitConnection(t, connection)
+	cause := connection.Err()
+	if !errors.Is(cause, io.EOF) {
+		t.Fatalf("peer close cause: %v", cause)
+	}
+	_ = connection.Close()
+	if connection.Err() != cause {
+		t.Fatalf("caller Close replaced earlier transport failure: %v", connection.Err())
+	}
+}
+
 func TestConnectionClosePrefersBufferedWriteResultOverCancellation(t *testing.T) {
 	previousProcs := runtime.GOMAXPROCS(1)
 	t.Cleanup(func() { runtime.GOMAXPROCS(previousProcs) })
