@@ -94,6 +94,21 @@ variables, restore them on exit, and must not overlap other users in the same te
 process. Keep the control and TLV-message files together: `messageSentinel` is a
 shared local helper, not an exported testing API.
 
+`server_stats_test.go` owns public constructed-default/custom-limit and gated
+resource snapshot lifecycle/concurrent Serve/shutdown contracts, reusing the
+`lifecycleListener`, real Noise helper and bounded waits from the runtime suite.
+`server_admission_contract_test.go` also checks snapshot cleanup after admission
+rejection and admission/disconnect panic recovery. Root `server_stats.go` owns
+this secret-free advisory API; root `server_stats_test.go` checks coherent map
+handoff (including before Start), and `server_stats_example_test.go` retains the
+executable godoc example. Pending/active ownership and shutdown are sampled
+under one mutex; slot gauges are independently observed, not a globally atomic
+snapshot. A handshake slot is released before Admission, while a connection
+slot can remain occupied through OnDisconnect after active ownership ends.
+Active counts handoff, not live/ready peers; Stats reserves no capacity.
+Select with
+`go test -run 'TestServerStats|TestServerAdmissionDisconnect|ExampleServer_Stats' -count=1 ./...`.
+
 Root Server suites keep complete owners together: `server_handshake_test.go`
 (establishment/allowlist/frame validation), `server_runtime_test.go` (slots,
 reservation/atomic handoff snapshots and stress), `server_accept_test.go`

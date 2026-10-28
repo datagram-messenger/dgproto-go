@@ -35,6 +35,7 @@ This document describes the Go implementation. The [protocol specification](../p
 - `server_config.go`: public ServerConfig and the complete NewServer startup transaction: validation/default ordering followed by initial map/channel allocation. `server_config_test.go` owns constructor regressions, normalized/explicit snapshots and error priority; shared key/config helpers remain in `server_test_helpers_test.go`.
 - `server.go`: central Server/error/admission definitions, listener accept/backoff and shutdown snapshots/join. Startup configuration is separate source organization in the same root package, not a new runtime owner; Server locks, slots and handoff remain unchanged.
 - `server_runtime.go`: complete per-socket worker, admission/disconnect containment, independent slot leases, worker reservation and atomic socket-to-runtime handoff. All methods still use the same root Server state and shutdown mutex; `server_runtime_test.go` owns slot leases, worker reservation and both serialized handoff/shutdown snapshots plus stress regressions. `server_handshake_test.go` owns establishment/allowlist/frame validation; `server_accept_test.go` owns classification, scripted listeners and backoff; `server_shutdown_test.go` owns Close/stalled-handshake/admission-socket shutdown. `server_config_test.go` also owns negative handler-shutdown timeout; shared fixtures live in `server_test_helpers_test.go`.
+- `server_stats.go`: secret-free advisory ServerStats/Stats API over existing root ownership maps and capacity channels. `integrationtests/server_stats_test.go` owns constructed limits, gated lifecycle and concurrent Serve/shutdown snapshots; `integrationtests/server_admission_contract_test.go` also checks rejection/panic cleanup. Root `server_stats_test.go` owns coherent handoff before Start; `server_stats_example_test.go` is the executable godoc example.
 - `server_handshake.go`: responder establishment, authenticated allowlist and handshake-frame validation shared with the client; root symbols and wire behavior unchanged.
 - `internal/acceptpolicy/errors.go`: stateless accept-error classification; the server retains backoff and lifecycle ownership.
 - `keylog.go`, `keylog_disabled.go`: tagged sink forwarding and unchanged default no-ops. Only the tagged facade imports `internal/keylog/writer.go`, which owns the complete process-wide environment/open-once/file/leaf-lock/record-formatting responsibility. Colocated tagged tests cover exact synthetic record bytes, append/single-open, no retry after absent/failed opening, and concurrent non-interleaved initial pairs/epoch records. Root `keylog_enabled_test.go` keeps private Session/rekey commit integration in a fresh subprocess, with no production reset/close API. Session commit points and lock ownership are unchanged.
@@ -84,3 +85,14 @@ The reader validates framing before decryption and authenticates the exact recei
 Each connection has dedicated read and write loops and a handler worker. Exported methods are safe for concurrent use, while writes are serialized. Received application messages enter a bounded handler queue and handlers run serially. No pooling, batching, parallel-handler, lock-free, or other unimplemented optimization is implied.
 
 Termination is coordinated once and retains the first observed cause. It cancels connection context, unblocks queued work, closes transport state, and makes later operations observe the terminal result. Handler errors and panics terminate the connection. Admission occurs after authentication and before loops start; server limits bound handshakes and established connections independently.
+
+`Server.Stats` is advisory and safe during Serve, Close, Abort and callbacks on a
+server constructed by NewServer. PendingConnections, ActiveConnections and
+ShuttingDown are sampled together under the ownership mutex; socket-to-runtime
+handoff cannot lose or double-count an entry between the maps. Active ownership
+starts before Start and is not proof of peer liveness or readiness. Handshake
+slots are released after Noise, before Admission; connection slots are acquired
+before Admission and can outlast active ownership through OnDisconnect. The
+channel gauges are sampled independently after the map snapshot, so they need
+not agree with either map or one another during transitions. Stats contains no
+keys, identities, payloads or terminal errors and reserves no capacity.

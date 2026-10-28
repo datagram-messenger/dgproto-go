@@ -16,6 +16,14 @@
 // timeout, queue capacities of 16, 64 concurrent handshakes, and 1024
 // established connections.
 //
+// Server.Stats returns a secret-free advisory resource snapshot for a server
+// constructed by NewServer. Pending/active ownership and shutdown are sampled
+// together under one mutex, preserving socket-to-runtime handoff; active includes
+// handoff before Start, not peer readiness. Slot gauges are independently sampled
+// and need not agree with the maps or each other during transitions. Handshake
+// slots are released before Admission; connection slots can remain occupied
+// through OnDisconnect after active ownership ends. Stats reserves no capacity.
+//
 // DialContext requires a provisioned server static-key pin and returns a stopped
 // Connection plus non-secret AdmissionInfo. Explicit Start(runtimeCtx) controls
 // its lifetime independently of establishment context cancellation. Zero client
