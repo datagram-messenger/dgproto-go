@@ -64,6 +64,20 @@ Run `go test -count=1 ./integrationtests/...` from the repository root. Plain
   imports enforce external visibility without changing test bodies.
   Run `go test -run 'TestHeader|TestNewHeader|TestDecodeTLV|TestEncodeTLV' -count=1 ./integrationtests/api`
   and `go test -run '^$' -bench 'Benchmark(EncodeTLVsPatch|DecodeTLVShapes)' -benchmem -benchtime=5s ./integrationtests/api`.
+- `api/encrypted_data_size_test.go`: EncodedLen/ValidateFrameSize wire length,
+  ownership, validation/error priority, current/nil sentinels, representative
+  single-field crypto boundaries and zero-allocation valid calls.
+- `api/encrypted_data_size_all_padding_test.go`: all 256 padding budgets with
+  multiple independently aligned TLVs, last-fitting/first-oversized aggregate
+  limits, envelope-before-frame rejection and Codec encryption/roundtrip parity.
+- `api/encrypted_data_size_benchmark_test.go`: same-input preflight versus
+  MarshalBinary comparisons, not a before/after encoder optimization claim.
+  `api/encrypted_data_size_example_test.go` owns the executable ValidateFrameSize
+  example; root `encrypted_data_size_example_test.go` owns the EncodedLen godoc.
+  Implementation remains in root `messages_tlv.go`; preflight is optional,
+  does not snapshot/reserve inputs or capacity, and is not performed by Send APIs.
+  Select with `go test -run 'TestEncryptedData(EncodedLen|Size|ValidateFrameSize)|ExampleEncryptedData' -count=1 ./...`;
+  benchmark with `go test -run '^$' -bench BenchmarkEncryptedDataSizePreflight -benchmem ./integrationtests/api`.
 - `api/connection_constructor_test.go`: public nil-dependency constructor panics.
 - `api/rekey_state_test.go`: public RekeyState derivation, confirmation and
   validation contracts; this does not replace root Session transaction tests.
