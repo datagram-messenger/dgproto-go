@@ -27,6 +27,9 @@ func Validate(data *dgproto.EncryptedData, operation uint8) error {
 }
 
 // Reply validates the demo request and owns a fresh immutable reply buffer.
+// The server stays open after the local write: the client initiates close only
+// after its reply callback publishes the result. Do not append an immediate
+// server Close here; local write completion is not client callback completion.
 func Reply(ctx context.Context, c *dgproto.Connection, message any) error {
 	data, ok := message.(*dgproto.EncryptedData)
 	if !ok {
@@ -65,6 +68,10 @@ func NewServer(key dgproto.StaticKey, clientPublic []byte) (*dgproto.Server, err
 // Exchange is one bounded demo request, not a persistent client API. It owns and
 // closes its dialed connection and joins Done even when the caller cancels.
 // The caller owns identity/pin provisioning. No retries or TOFU are performed.
+// Success requires a validated callback-published reply. With an arbitrary peer
+// that closes immediately after writing, shutdown may discard the queued reply
+// before its callback begins, so Exchange can return a terminal error instead.
+// Demo peers coordinate by leaving the server open until the client closes.
 func Exchange(ctx context.Context, address string, key dgproto.StaticKey, pin []byte) (err error) {
 	if err := ctx.Err(); err != nil {
 		return err

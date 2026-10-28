@@ -26,6 +26,31 @@ func TestJoinClientClose(t *testing.T) {
 	}
 }
 
+func TestWaitEchoPublishedResultWinsDone(t *testing.T) {
+	for _, result := range []error{nil, errors.New("invalid reply")} {
+		for range 100 {
+			received := make(chan error, 1)
+			received <- result
+			done := make(chan struct{})
+			close(done)
+			if err := waitEcho(context.Background(), received, done, func() error { return dgproto.ErrConnectionClosed }); err != result {
+				t.Fatalf("published result lost: %v", err)
+			}
+		}
+	}
+}
+
+func TestWaitEchoDoneWithoutReplyFails(t *testing.T) {
+	done := make(chan struct{})
+	close(done)
+	for _, cause := range []error{nil, dgproto.ErrConnectionClosed, io.EOF} {
+		err := waitEcho(context.Background(), make(chan error), done, func() error { return cause })
+		if err == nil || (cause != nil && !errors.Is(err, cause)) {
+			t.Fatalf("termination became success or lost cause: %v", err)
+		}
+	}
+}
+
 func TestRunRoundTrip(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

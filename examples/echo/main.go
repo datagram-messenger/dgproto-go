@@ -171,13 +171,26 @@ func exchange(ctx context.Context) (err error) {
 	if err != nil {
 		return err
 	}
+	return waitEcho(runtimeCtx, received, c.Done(), c.Err)
+}
+
+func waitEcho(ctx context.Context, received <-chan error, done <-chan struct{}, terminal func() error) error {
 	select {
 	case err := <-received:
-		return err // Only a validated application reply establishes demo success.
-	case <-runtimeCtx.Done():
-		return runtimeCtx.Err()
-	case <-c.Done():
-		return c.Err()
+		return err // Only a callback-published application result is success.
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-done:
+		// Prefer an already published result, not work dropped by shutdown.
+		select {
+		case err := <-received:
+			return err
+		default:
+		}
+		if err := terminal(); err != nil {
+			return err
+		}
+		return dgproto.ErrConnectionClosed
 	}
 }
 
