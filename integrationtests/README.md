@@ -64,6 +64,24 @@ Run `go test -count=1 ./integrationtests/...` from the repository root. Plain
   imports enforce external visibility without changing test bodies.
   Run `go test -run 'TestHeader|TestNewHeader|TestDecodeTLV|TestEncodeTLV' -count=1 ./integrationtests/api`
   and `go test -run '^$' -bench 'Benchmark(EncodeTLVsPatch|DecodeTLVShapes)' -benchmem -benchtime=5s ./integrationtests/api`.
+- `api/encrypted_data_size_test.go`: EncodedLen/ValidateFrameSize wire length,
+  ownership, validation/error priority, current/nil sentinels, representative
+  single-field crypto boundaries and zero-allocation valid calls.
+- `api/encrypted_data_size_all_padding_test.go`: all 256 padding budgets with
+  multiple independently aligned TLVs, last-fitting/first-oversized aggregate
+  limits, envelope-before-frame rejection and Codec encryption/roundtrip parity.
+- `api/encrypted_data_size_benchmark_test.go`: same-input preflight versus
+  MarshalBinary comparisons, not a before/after encoder optimization claim.
+  `api/encrypted_data_size_example_test.go` contains the ValidateFrameSize
+  example source; root `encrypted_data_size_example_test.go` contains EncodedLen.
+  Both are runnable output examples. Keep each trailing Output directive in its
+  own comment group, separate from explanatory comments, for Go discovery.
+  Verify registration with `go test -list ExampleEncryptedData ./...`; the
+  selector below runs both size tests and example output checks.
+  Implementation remains in root `messages_tlv.go`; preflight is optional,
+  does not snapshot/reserve inputs or capacity, and is not performed by Send APIs.
+  Select with `go test -run 'TestEncryptedData(EncodedLen|Size|ValidateFrameSize)|ExampleEncryptedData' -count=1 ./...`;
+  benchmark with `go test -run '^$' -bench BenchmarkEncryptedDataSizePreflight -benchmem ./integrationtests/api`.
 - `api/connection_constructor_test.go`: public nil-dependency constructor panics.
 - `api/rekey_state_test.go`: public RekeyState derivation, confirmation and
   validation contracts; this does not replace root Session transaction tests.
@@ -93,6 +111,21 @@ Keep mutable-sentinel tests non-parallel: they intentionally replace public
 variables, restore them on exit, and must not overlap other users in the same test
 process. Keep the control and TLV-message files together: `messageSentinel` is a
 shared local helper, not an exported testing API.
+
+`server_stats_test.go` owns public constructed-default/custom-limit and gated
+resource snapshot lifecycle/concurrent Serve/shutdown contracts, reusing the
+`lifecycleListener`, real Noise helper and bounded waits from the runtime suite.
+`server_admission_contract_test.go` also checks snapshot cleanup after admission
+rejection and admission/disconnect panic recovery. Root `server_stats.go` owns
+this secret-free advisory API; root `server_stats_test.go` checks coherent map
+handoff (including before Start), and `server_stats_example_test.go` retains the
+executable godoc example. Pending/active ownership and shutdown are sampled
+under one mutex; slot gauges are independently observed, not a globally atomic
+snapshot. A handshake slot is released before Admission, while a connection
+slot can remain occupied through OnDisconnect after active ownership ends.
+Active counts handoff, not live/ready peers; Stats reserves no capacity.
+Select with
+`go test -run 'TestServerStats|TestServerAdmissionDisconnect|ExampleServer_Stats' -count=1 ./...`.
 
 Root Server suites keep complete owners together: `server_handshake_test.go`
 (establishment/allowlist/frame validation), `server_runtime_test.go` (slots,

@@ -18,6 +18,49 @@ type EncryptedData struct {
 	Fields []TLV
 }
 
+// EncodedLen returns the marshaled payload length: the 4-byte envelope plus
+// each TLV's header, value and alignment padding. It applies MarshalBinary's
+// validation in the same order and returns zero on error. Valid calls allocate
+// no storage. The frame header, AEAD tag and random frame padding are excluded;
+// use ValidateFrameSize to check the complete encrypted frame budget.
+//
+// This is not a snapshot or reservation. Keep m and its reachable buffers
+// unchanged during the call and through subsequent serialization or queued use.
+func (m EncryptedData) EncodedLen() (int, error) {
+	if err := rejectDuplicateTLVs(m.Fields); err != nil {
+		return 0, err
+	}
+	fieldsLen, err := encodedTLVsLen(m.Fields)
+	if err != nil {
+		return 0, err
+	}
+	if fieldsLen > MaxEncryptedPayloadSize-4 {
+		return 0, fmt.Errorf("%w: got %d, limit %d", ErrMessageLength, 4+fieldsLen, MaxEncryptedPayloadSize)
+	}
+	return 4 + fieldsLen, nil
+}
+
+// ValidateFrameSize checks that m can fit in a complete encrypted frame with
+// exactly padLength random padding bytes, including HeaderSize and AEADTagSize.
+// It first applies EncodedLen's validation, then wraps ErrPayloadTooLarge if
+// the requested padding exceeds the remaining frame budget, as Codec.Encrypt
+// does. Valid calls allocate no storage.
+//
+// This optional preflight neither snapshots inputs nor reserves queue capacity
+// or session state, and does not guarantee a successful send or delivery. Keep
+// inputs unchanged as required by EncodedLen and the sending API's ownership
+// contract. Sending APIs do not automatically perform this preflight.
+func (m EncryptedData) ValidateFrameSize(padLength uint8) error {
+	n, err := m.EncodedLen()
+	if err != nil {
+		return err
+	}
+	if HeaderSize+n+AEADTagSize+int(padLength) > MaxFrameSize {
+		return fmt.Errorf("%w: %d bytes", ErrPayloadTooLarge, n)
+	}
+	return nil
+}
+
 // MarshalBinary encodes m, rejecting duplicate field types, and returns owned storage.
 func (m EncryptedData) MarshalBinary() ([]byte, error) {
 	if err := rejectDuplicateTLVs(m.Fields); err != nil {

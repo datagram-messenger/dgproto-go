@@ -141,7 +141,7 @@ Go module releases and protocol draft versions are independent: the DGProto **v1
 
 The current profile uses `Noise_XX_25519_ChaChaPoly_SHA256` and ChaCha20-Poly1305 data-frame encryption. Authentication proves key possession, not account identity or permission. Applications own key storage and rotation, authorization, endpoint hardening, and dependency updates; neither the draft nor passing tests establishes production assurance.
 
-Use a security-patched Go toolchain, not just the minimum language version. On Windows, [GO-2026-4971](https://pkg.go.dev/vuln/GO-2026-4971) affects TCP dialing with NUL-containing input; fixes are in Go **1.25.10** and **1.26.3** for their respective release lines.
+Use the latest security patch of a [currently supported Go release](https://go.dev/doc/devel/release#policy), not just the minimum language version. Go 1.25 remains the module's language minimum, not an upstream security-support promise. CI retains a minimum-line compatibility check; release, race and vulnerability gates use Go 1.26.x. Earlier Windows fixes for [GO-2026-4971](https://pkg.go.dev/vuln/GO-2026-4971) landed in Go 1.25.10 and 1.26.3; those historical patch levels are not a current security baseline.
 
 Optional traffic-secret logging requires both the `dgproto_keylog` build tag and `DGPROTO_KEYLOG` environment variable. Keep the tag out of production builds and the variable unset in ordinary runs; logged secrets expose captured traffic.
 

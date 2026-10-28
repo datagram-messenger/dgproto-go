@@ -123,9 +123,11 @@ func TestServerAdmissionDisconnectContainmentAndCapacity(t *testing.T) {
 		handlerFailure := errors.New("handler failed")
 		var admissions atomic.Int32
 		var dispatches atomic.Int32
+		var server *dgproto.Server
 		server, err := dgproto.NewServer(dgproto.ServerConfig{
 			StaticKey: serverKey, MaxConcurrentHandshakes: 1, MaxActiveConnections: 1,
 			Admission: func(ctx context.Context, c *dgproto.Connection, info dgproto.AdmissionInfo) error {
+				_ = server.Stats()
 				admitted <- admissionEvent{c, info}
 				switch admissions.Add(1) {
 				case 1:
@@ -151,6 +153,7 @@ func TestServerAdmissionDisconnectContainmentAndCapacity(t *testing.T) {
 				return c.SendAndWait(ctx, message)
 			},
 			OnDisconnect: func(ctx context.Context, c *dgproto.Connection, info dgproto.AdmissionInfo, cause error) {
+				_ = server.Stats()
 				_, deadline := ctx.Deadline()
 				disconnected <- disconnectEvent{admissionEvent{c, info}, cause, ctx.Err() == nil && ctx.Done() == nil && !deadline}
 				panic("hook panic must not terminate Serve")
@@ -187,6 +190,10 @@ func TestServerAdmissionDisconnectContainmentAndCapacity(t *testing.T) {
 			}
 			if dispatches.Load() != 0 || len(disconnected) != 0 {
 				t.Fatal("rejected connection dispatched or invoked OnDisconnect")
+			}
+			want := dgproto.ServerStats{HandshakeSlotsCapacity: 1, ConnectionSlotsCapacity: 1}
+			if got := server.Stats(); got != want {
+				t.Fatalf("rejection/panic leaked resources: %+v", got)
 			}
 		}
 		tr, session := connectScriptedServer(t, listener, serverKey, clientKey)
@@ -242,6 +249,10 @@ func TestServerAdmissionDisconnectContainmentAndCapacity(t *testing.T) {
 		synctest.Wait()
 		if len(disconnected) != 0 || admissions.Load() != 4 || dispatches.Load() != 2 {
 			t.Fatal("duplicate disconnect or unexpected dispatch")
+		}
+		want := dgproto.ServerStats{HandshakeSlotsCapacity: 1, ConnectionSlotsCapacity: 1}
+		if got := server.Stats(); got != want {
+			t.Fatalf("disconnect panic leaked resources: %+v", got)
 		}
 	})
 }

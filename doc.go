@@ -16,6 +16,14 @@
 // timeout, queue capacities of 16, 64 concurrent handshakes, and 1024
 // established connections.
 //
+// Server.Stats returns a secret-free advisory resource snapshot for a server
+// constructed by NewServer. Pending/active ownership and shutdown are sampled
+// together under one mutex, preserving socket-to-runtime handoff; active includes
+// handoff before Start, not peer readiness. Slot gauges are independently sampled
+// and need not agree with the maps or each other during transitions. Handshake
+// slots are released before Admission; connection slots can remain occupied
+// through OnDisconnect after active ownership ends. Stats reserves no capacity.
+//
 // DialContext requires a provisioned server static-key pin and returns a stopped
 // Connection plus non-secret AdmissionInfo. Explicit Start(runtimeCtx) controls
 // its lifetime independently of establishment context cancellation. Zero client
@@ -28,6 +36,13 @@
 // write-waits do not retract accepted messages or permit immediate buffer reuse.
 // Padding is random cleartext trailing bytes authenticated with the exact header;
 // zero requested length means no padding. Policy remains application-owned.
+//
+// EncryptedData.EncodedLen reports the aligned envelope payload size without
+// allocating on valid success. EncryptedData.ValidateFrameSize optionally checks
+// the complete header/payload/tag budget with the exact requested uint8 padding
+// before enqueueing. Neither method snapshots inputs, reserves queue/session
+// state, nor guarantees a successful send or delivery; keep inputs unchanged
+// through serialization or queued use. Send APIs do not preflight automatically.
 //
 // The first observed terminal cause is retained. Close attempts a close-frame
 // write, not a peer-acknowledged handshake or queue drain. Server Abort closes

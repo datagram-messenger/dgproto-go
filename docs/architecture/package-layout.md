@@ -63,12 +63,14 @@ selectors, helper ownership and non-parallel sentinel requirements.
 | Responsibility | Current owner and checks |
 | --- | --- |
 | Public concrete types, validation, errors and owned buffers | Root `dgproto`; Header, TLV, replay and typed-message contracts in `integrationtests/api/` |
+| EncryptedData size preflight | Root `messages_tlv.go`; `integrationtests/api/encrypted_data_size_test.go` owns lengths/ownership/priority/sentinels/allocations and representative crypto boundaries, `encrypted_data_size_all_padding_test.go` all 256 pads and aligned aggregate limits, `encrypted_data_size_benchmark_test.go` same-input comparisons, `encrypted_data_size_example_test.go` ValidateFrameSize example (all three under `integrationtests/api/`); root `encrypted_data_size_example_test.go` contains EncodedLen example source; Go 1.26.5 does not discover either size example as runnable |
 | Primitive header/control byte layouts | Stdlib-only `internal/wire/`, with colocated algorithm/golden/precondition tests |
 | Bounded TLV arithmetic and byte codec | Stdlib-only `internal/tlv/`, with colocated hostile-input/alignment tests |
 | Replay validation/commit/bitmap algorithm | Stdlib-only `internal/replay/`; public storage and Session locking/transactions remain root |
 | Accept retry classification | Stdlib-only `internal/acceptpolicy/` |
 | Optional process-wide traffic-secret sink | Tagged stdlib-only `internal/keylog/`; root owns session commit decisions and default no-ops |
 | Handshake, Session, Connection and Server state/lifecycle | Root responsibility-oriented files; white-box tests remain root |
+| Advisory server resource snapshots | Root `server_stats.go`; public limits/lifecycle/concurrent shutdown in `integrationtests/server_stats_test.go`, rejection/panic cleanup in `integrationtests/server_admission_contract_test.go`, coherent handoff in root `server_stats_test.go`, godoc in `server_stats_example_test.go` |
 | Public TCP framing/stream/cancellation | `integrationtests/tcp_test.go`, `integrationtests/tcp_stream_test.go`, `integrationtests/tcp_cancellation_test.go`; shared public helpers in `integrationtests/tcp_helpers_test.go` |
 | Godoc, vectors, conformance, fuzz and keylog build variants | Existing root examples/tests and unchanged `testdata/` |
 
