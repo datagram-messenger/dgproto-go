@@ -9,7 +9,7 @@ This library implements the **draft DGProto v1 strict MVP over TCP**, not an app
 - [Protocol specification](docs/protocol/dgproto-v1.md) is normative for wire behavior, especially sections 2–5. Historical/post-MVP material is not implemented functionality or a task to add it.
 - [README](README.md), [package overview](doc.go), exported comments, implementation, callers, and tests establish the public API and current behavior. [Getting started](docs/guides/getting-started.md) covers integration; [architecture](docs/architecture/overview.md) explains the runtime.
 - [Vector policy](testdata/vectors/README.md) defines fixture scope. Parser acceptance is not semantic handshake/session validity or independent interoperability evidence.
-- [go.mod](go.mod) defines module identity, dependencies, and minimum Go version (currently 1.25.0). Use a security-patched toolchain on that line; consult README security guidance rather than freezing patch/advisory lists here.
+- [go.mod](go.mod) defines module identity, dependencies, and minimum Go version (currently 1.25.0). The minimum language version is not an upstream support promise: use a currently supported, security-patched toolchain; consult README security guidance rather than freezing patch/advisory lists here.
 - [Contribution policy](.github/CONTRIBUTING.md) and [security policy](SECURITY.md) govern contributions and private vulnerability reporting. [CI](.github/workflows/ci.yml) and [release workflow](.github/workflows/release.yml) define actual automated gates; broad policy lists are not proof those gates exist or passed.
 
 When sources conflict, identify the exact discrepancy and evidence. Do not treat a bug as a contract or promote design aspirations into guarantees. Fix clear defects within scope; ask before resolving material ambiguity or changing an incompatible API/wire contract.
@@ -110,7 +110,7 @@ git diff --exit-code -- go.mod go.sum
 
 `tidy` may download modules or modify files. Use a clean module baseline or an isolated copy/worktree when unrelated module edits exist; for intentional dependency changes, verify against the reviewed new baseline. Never erase legitimate edits to obtain a clean check.
 
-Current CI uses Go 1.25.x: ordinary tests on Linux, Windows, macOS; Linux race, keylog-tag tests, vulnerability scan, and formatting/vet/tidy checks. Fuzz campaigns, benchmarks, independent interoperability, signing, and deployment/load checks are **not** automated gates in these workflows. Read workflows again when changing/releasing; configured checks are not observed successful runs. Newer-Go tests or cross-compilation do not replace minimum-line and target-OS execution. Report unavailable checks and required CI/host evidence, not fictional passes.
+Current CI checks Go 1.25.x minimum compatibility and Go 1.26.x in the Linux quality matrix; Go 1.26.x runs ordinary tests on Windows/macOS and Linux race, keylog-tag and vulnerability gates. Exact-tag release validation also uses Go 1.26.x. Fuzz campaigns, benchmarks, independent interoperability, signing, and deployment/load checks are **not** automated gates in these workflows. Read workflows again when changing/releasing; configured checks are not observed successful runs. Newer-Go tests or cross-compilation do not replace minimum-line and target-OS execution. Report unavailable checks and required CI/host evidence, not fictional passes.
 
 ## Security, Git, and release safety
 
