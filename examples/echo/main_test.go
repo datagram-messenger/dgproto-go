@@ -4,11 +4,27 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
+	"net"
 	"testing"
 	"time"
 
 	dgproto "github.com/datagram-messenger/dgproto-go"
 )
+
+func TestJoinClientClose(t *testing.T) {
+	for _, closeErr := range []error{io.EOF, net.ErrClosed, dgproto.ErrConnectionClosed} {
+		if err := joinClientClose(nil, closeErr); err != nil {
+			t.Fatalf("validated receipt undone: %v", err)
+		}
+		if err := joinClientClose(context.Canceled, closeErr); !errors.Is(err, context.Canceled) || !errors.Is(err, closeErr) {
+			t.Fatal("operation or cleanup failure lost")
+		}
+	}
+	if err := joinClientClose(nil, context.DeadlineExceeded); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal("unexpected cleanup failure hidden")
+	}
+}
 
 func TestRunRoundTrip(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

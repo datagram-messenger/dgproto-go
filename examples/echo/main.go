@@ -143,7 +143,9 @@ func exchange(ctx context.Context) (err error) {
 		return err
 	}
 	defer func() {
-		err = errors.Join(err, c.Close()) // Always close, even before Start.
+		// Always close, even before Start. A peer close may race this close-frame
+		// write after a validated reply; do not undo application receipt for EOF.
+		err = joinClientClose(err, c.Close())
 		joinCtx, stop := context.WithTimeout(context.Background(), 3*time.Second)
 		defer stop()
 		select {
@@ -177,6 +179,14 @@ func exchange(ctx context.Context) (err error) {
 	case <-c.Done():
 		return c.Err()
 	}
+}
+
+func joinClientClose(operationErr, closeErr error) error {
+	if operationErr == nil && (errors.Is(closeErr, io.EOF) || errors.Is(closeErr, net.ErrClosed) ||
+		errors.Is(closeErr, dgproto.ErrConnectionClosed)) {
+		return nil // Only after a validated reply; never hide an operation failure.
+	}
+	return errors.Join(operationErr, closeErr)
 }
 
 func validateEcho(data *dgproto.EncryptedData, messageType uint8) error {
