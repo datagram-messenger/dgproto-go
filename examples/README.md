@@ -1,12 +1,14 @@
 # Runnable examples
 
-Run these commands from the repository root with a supported, security-patched Go toolchain (module minimum: Go 1.25.0). Examples use the root module; there is no separate `go.mod`, service, configuration file, or new dependency.
+Run these commands from the repository root with a supported, security-patched Go toolchain (module minimum: Go 1.25.0). Examples use the root module with no nested `go.mod` or new dependency. The loopback command is self-contained; the independent peers require provisioned key files.
 
 | Example | Run | Demonstrates |
 |---------|-----|--------------|
 | [Pinned loopback echo](echo/main.go) | `go run ./examples/echo` | Allowlisting, a trusted server pin, explicit client startup, TLV payload validation, padded write-wait, and shutdown/join |
 
-Successful echo output is exactly:
+For separate terminals with provisioned identities, see [independent pinned peers](echo-pair.md): `go run ./examples/echo-server` and `go run ./examples/echo-client` require explicit private identity and trusted public-key file flags. Their input, trust and lifecycle contracts are documented there; neither command exports secrets or adopts observed keys.
+
+Successful loopback echo output is exactly:
 
 ```text
 authenticated application echo received

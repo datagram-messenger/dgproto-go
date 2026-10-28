@@ -151,7 +151,7 @@ Optional traffic-secret logging requires both the `dgproto_keylog` build tag and
 
 | Start here | What you'll find |
 |------------|------------------|
-| [Runnable examples](examples/README.md) | Self-contained pinned loopback echo and example tests |
+| [Runnable examples](examples/README.md) | Self-contained loopback echo, separate provisioned client/server commands, and tests |
 | [Getting started](docs/guides/getting-started.md) | Client/server integration, admission, ownership, shutdown, and timeouts |
 | [Go API reference](https://pkg.go.dev/github.com/datagram-messenger/dgproto-go) | Exported types, configuration, and method contracts |
 | [Architecture](docs/architecture/overview.md) | Framing, rekey flow, replay handling, and concurrency |
