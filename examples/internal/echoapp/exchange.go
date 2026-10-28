@@ -35,8 +35,10 @@ func Reply(ctx context.Context, c *dgproto.Connection, message any) error {
 	if err := Validate(data, 1); err != nil {
 		return err
 	}
-	reply := dgproto.EncryptedData{StreamID: 1, AppMessageType: 2,
-		Fields: []dgproto.TLV{{Type: 1, Value: bytes.Clone(data.Fields[0].Value)}}}
+	reply, err := dgproto.NewEncryptedData(1, 2, data.Fields...)
+	if err != nil {
+		return err
+	}
 	if err := reply.ValidateFrameSize(16); err != nil {
 		return err
 	}
@@ -116,8 +118,10 @@ func Exchange(ctx context.Context, address string, key dgproto.StaticKey, pin []
 		}
 	}()
 	c.Start(runtimeCtx) // Stopped, caller-owned runtime; handler installed first.
-	request := dgproto.EncryptedData{StreamID: 1, AppMessageType: 1,
-		Fields: []dgproto.TLV{{Type: 1, Value: []byte(Payload)}}}
+	request, err := dgproto.NewEncryptedData(1, 1, dgproto.TLV{Type: 1, Value: []byte(Payload)})
+	if err != nil {
+		return err
+	}
 	if err := request.ValidateFrameSize(16); err != nil {
 		return err
 	}

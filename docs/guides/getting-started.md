@@ -63,6 +63,24 @@ Ephemeral demo identities are not production provisioning or persistence; the co
 
 Messages and reachable buffers are not snapshotted at enqueue. Keep them immutable while pending. A successful write-wait permits reuse; cancellation **after enqueue does not retract** the message and can return before serialization finishes, so cancellation alone does not permit buffer mutation. Use fresh immutable messages for acceptance-only sends. Application correlation, authorization, retries and idempotency remain application-owned; wire Ack is not durable delivery.
 
+### Build an owned application envelope
+
+`NewEncryptedData(streamID, appMessageType, fields...)` validates using `EncodedLen` and copies both the field slice and every value. This replaces repeated per-field cloning and duplicate/aggregate-length checks when assembling envelopes from reusable caller buffers or inbound fields. Struct literals remain supported with their existing aliasing semantics.
+
+```go
+message, err := dgproto.NewEncryptedData(1, 2, dgproto.TLV{Type: 1, Value: buffer})
+if err != nil {
+    return err
+}
+// buffer and the input field slice may now be reused; message owns its snapshot.
+if err := message.ValidateFrameSize(16); err != nil {
+    return err
+}
+return conn.SendPaddedAndWait(writeCtx, message, 16)
+```
+
+Construction does not freeze the returned envelope: never mutate `message.Fields` or its values while queued, including after a canceled write-wait. Copying the returned struct shares its buffers; construct again to make an independent snapshot. Unknown field types, stream IDs and operation kinds remain application-defined, not authorized by construction. Padding preflight and bounded send policy still belong to the caller. See runnable `ExampleNewEncryptedData` and the echo request/reply implementation.
+
 ### Optional EncryptedData size preflight
 
 Before enqueueing an application envelope, `EncryptedData.EncodedLen()` returns its actual marshaled payload length (4-byte envelope plus aligned TLVs), without allocating on valid success. It excludes the frame header, AEAD tag and random frame padding. `EncryptedData.ValidateFrameSize(padLength)` checks the **complete** wire budget with the exact `uint8` padding you intend to send:
