@@ -19,5 +19,6 @@ func ExampleEncryptedData_EncodedLen() {
 	// Use ValidateFrameSize with the intended padding before enqueueing.
 	// Keep inputs unchanged: neither method snapshots or reserves anything,
 	// and neither promises a successful send or delivery.
+
 	// Output: 12
 }

@@ -26,6 +26,7 @@ func ExampleEncryptedData_ValidateFrameSize() {
 	fmt.Println("frame bytes:", dg.HeaderSize+n+dg.AEADTagSize+int(padLength))
 	// Before sending, keep the message and reachable buffers unchanged.
 	// Preflight is not a snapshot, queue reservation or delivery guarantee.
+
 	// Output:
 	// payload bytes: 12
 	// frame bytes: 323
