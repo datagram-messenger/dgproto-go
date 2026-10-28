@@ -72,8 +72,12 @@ Run `go test -count=1 ./integrationtests/...` from the repository root. Plain
   limits, envelope-before-frame rejection and Codec encryption/roundtrip parity.
 - `api/encrypted_data_size_benchmark_test.go`: same-input preflight versus
   MarshalBinary comparisons, not a before/after encoder optimization claim.
-  `api/encrypted_data_size_example_test.go` owns the executable ValidateFrameSize
-  example; root `encrypted_data_size_example_test.go` owns the EncodedLen godoc.
+  `api/encrypted_data_size_example_test.go` contains the ValidateFrameSize
+  example source; root `encrypted_data_size_example_test.go` contains EncodedLen.
+  Go 1.26.5 includes both files but does not discover these functions as runnable
+  examples (`go test -list ExampleEncryptedData` lists neither); the selector
+  below validates size tests, not those example outputs. Example discovery needs
+  separate investigation; do not infer execution from a successful empty selector.
   Implementation remains in root `messages_tlv.go`; preflight is optional,
   does not snapshot/reserve inputs or capacity, and is not performed by Send APIs.
   Select with `go test -run 'TestEncryptedData(EncodedLen|Size|ValidateFrameSize)|ExampleEncryptedData' -count=1 ./...`;
