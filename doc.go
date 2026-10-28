@@ -30,6 +30,19 @@
 // HandshakeTimeout bounds dial plus handshake to 10 seconds (or an earlier caller
 // deadline). Success is a local final-flight write, not server admission.
 //
+// DialAndStartContext is an opt-in convenience for configurations with handlers
+// prepared up front: it establishes and starts with separate contexts, without
+// changing DialContext's stopped semantics. The caller still owns Close. Handlers
+// may run before return and should use their Connection argument. Runtime
+// cancellation does not interrupt establishment; a cancellation observed before
+// Start closes the stopped result. Cancellation racing Start/return is a runtime
+// outcome observable via Done and Err, not a readiness guarantee.
+//
+// NewEncryptedData validates and copies application fields and their values so
+// constructor inputs can be reused after return. The returned envelope is still
+// mutable and must remain immutable while queued, including on canceled waits.
+// Struct literals and existing sends keep their original ownership semantics.
+//
 // Send and SendPaddedContext report bounded-queue acceptance. SendAndWait and
 // SendPaddedAndWait wait for the local writer result; none guarantees peer receipt
 // or application acknowledgement. Queued buffers must remain immutable; canceled

@@ -27,8 +27,8 @@ Use it for desktop-client events, backend command channels, or custom binary pro
 - **Peer identity, not just encryption.** Noise XX authenticates static-key possession; the TCP client requires a provisioned server-key pin.
 - **Session protection.** ChaCha20-Poly1305 data frames, replay checks, and directional rekeying managed by the connection runtime.
 - **Explicit backpressure.** Bounded outbound and handler queues, plus separate server limits for handshakes and active connections.
-- **A lifecycle you control.** Contexts, explicit client `Start`, shutdown APIs, and a retained terminal cause.
-- **Structured binary messages.** Typed messages and TLV codecs, with application envelopes carrying stream IDs and message types.
+- **A lifecycle you control.** Stopped `DialContext` or opt-in `DialAndStartContext` with separate establishment/runtime contexts, shutdown APIs, and a retained terminal cause.
+- **Structured binary messages.** Typed messages and TLV codecs, with `NewEncryptedData` validating and copying application envelope fields for safe input reuse.
 
 > **Pre-1.0 / draft:** Wire compatibility is not yet stable. See [compatibility and upgrades](#compatibility-and-upgrades), including the **0.7.0 ErrorMessage wire break**.
 
