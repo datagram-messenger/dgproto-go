@@ -27,6 +27,22 @@ conn.Start(runtimeCtx) // explicit: returned connection is STOPPED.
 
 Canceling establishment after success does not cancel the established lifetime. The caller owns the connection, including closing an unstarted connection. Success confirms the pinned key and a complete **local** final-flight write, not server admission, readiness, or application authorization. Pin provisioning, persistence and rotation are application responsibilities. Metadata is non-secret but may still be privacy-sensitive.
 
+### Connect and start in one call
+
+When all handlers can be configured up front, `DialAndStartContext(establishmentCtx, runtimeCtx, address, config)` replaces `DialContext` followed by `Start`. The handler is installed before start and may execute before the helper returns: use its `*Connection` argument rather than capturing the variable receiving the return value.
+
+```go
+conn, info, err := dgproto.DialAndStartContext(establishmentCtx, runtimeCtx, address, config)
+if err != nil {
+    return err
+}
+defer conn.Close()
+_ = info
+// Runtime has started; observe conn.Done() and conn.Err() for termination.
+```
+
+Both contexts must be nonnil. Pre-canceled runtime prevents dialing; runtime cancellation observed after establishment closes the still-stopped connection and returns no connection or metadata. Runtime cancellation does **not** interrupt an ongoing handshake: establishment retains its independent timeout/cancellation budget. Cancellation racing with start/return may yield an already terminated caller-owned connection on success. No readiness/admission wait, extra worker, retry or reconnect is added. Use `DialContext` when preparing a stopped connection is necessary. The runnable `ExampleDialAndStartContext` exercises independent establishment cancellation and an application reply.
+
 ## Run a complete loopback echo
 
 From the repository root:
