@@ -74,10 +74,10 @@ Run `go test -count=1 ./integrationtests/...` from the repository root. Plain
   MarshalBinary comparisons, not a before/after encoder optimization claim.
   `api/encrypted_data_size_example_test.go` contains the ValidateFrameSize
   example source; root `encrypted_data_size_example_test.go` contains EncodedLen.
-  Go 1.26.5 includes both files but does not discover these functions as runnable
-  examples (`go test -list ExampleEncryptedData` lists neither); the selector
-  below validates size tests, not those example outputs. Example discovery needs
-  separate investigation; do not infer execution from a successful empty selector.
+  Both are runnable output examples. Keep each trailing Output directive in its
+  own comment group, separate from explanatory comments, for Go discovery.
+  Verify registration with `go test -list ExampleEncryptedData ./...`; the
+  selector below runs both size tests and example output checks.
   Implementation remains in root `messages_tlv.go`; preflight is optional,
   does not snapshot/reserve inputs or capacity, and is not performed by Send APIs.
   Select with `go test -run 'TestEncryptedData(EncodedLen|Size|ValidateFrameSize)|ExampleEncryptedData' -count=1 ./...`;
