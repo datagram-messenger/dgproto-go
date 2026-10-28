@@ -47,9 +47,11 @@ go run ./examples/echo-client -address 127.0.0.1:7443 -identity /secure/client.k
 
 On Windows use quoted native paths, for example `-identity "C:\secure\client.key"`.
 For direct signal handling, build each command to an executable in an external temporary
-folder and run that executable instead of the `go run` wrapper. Ctrl+C stops the server;
-the client exits after one validated reply. Both binaries use the existing root module,
-with no additional dependencies or nested module. Flags contain **file paths**, not secrets.
+folder and run that executable instead of the `go run` wrapper. The binaries subscribe
+to `os.Interrupt` (Ctrl+C in an attached console); the client exits after one validated
+reply. Automated Windows smoke uses process kill, not console Ctrl+C, and does not
+verify graceful console shutdown. SIGTERM is not explicitly subscribed here.
+Both binaries use the existing root module, with no additional dependencies or nested module. Flags contain **file paths**, not secrets.
 
 The server prints only `echo server listening`, without the address, peer identities,
 keys or application payload. The client prints only `authenticated application echo received`
@@ -88,12 +90,37 @@ These are example-local choices, not changed library defaults or deployment budg
 ## Verify
 
 ```sh
-go test -count=20 -timeout=120s ./examples/...
-go test -race -count=1 ./examples/...
+go test -short -count=20 -timeout=120s ./examples/...
+go test -run 'TestSeparateProcessProvisionedEcho|TestExternalConsumerExampleCompiles' -count=3 -timeout=180s ./examples/echo-server
+go test -race -count=1 -timeout=180s ./examples/...
 ```
 
 The shared example code is under `examples/internal/echoapp`, not the public library
 API. Its tests exercise independent consumers, required input loading, wrong pins,
-malformed replies, cancellation while awaiting an application reply, and listener
-ownership on pre-canceled shutdown. See [the examples index](README.md) and
+malformed replies, cancellation/deadlines after request receipt, early peer termination,
+and listener ownership on failed startup and canceled shutdown.
+
+For a safe developer smoke, use the second command above (Windows cmd.exe: use double
+quotes around the `-run` selector). It builds real server/client executables outside the
+checkout, provisions fresh synthetic private files and locally derived public trust files
+in `t.TempDir`, waits for exact readiness output, verifies success, rejects a wrong pin,
+and checks a subsequent successful exchange. No user keys or observed pins are used;
+`DGPROTO_KEYLOG` is removed from child environments. Captured output is bounded and
+never dumped on failure. All child lifetimes and waits are bounded; cleanup kills only
+the directly launched executable and joins its sole `Wait` before temporary-file cleanup.
+On non-Windows hosts the test requests `os.Interrupt` and requires successful server
+exit; Windows uses forced termination and listener release only. This is not evidence
+of Windows Ctrl+C behavior or graceful shutdown under arbitrary OS signals.
+
+The command has no inherited-listener interface: ephemeral port reservation followed
+by command binding has a small local collision window. A collision fails readiness;
+there are no sleep-based startup guesses or retries that change trust. `-short` skips
+both build-heavy tests. Full `go test ./...` includes them. The external-consumer test
+copies the public-only loopback example into a temporary module, uses a local `replace`,
+and runs `go mod tidy` plus `go build`; it does not verify published-module availability.
+Child builds use the selected Go toolchain without adding dependencies to this repository.
+The parent race/tag gates do not implicitly instrument/tag binaries built by `go build`.
+Temporary file modes are not a Windows ACL audit or a secure-erasure guarantee.
+
+See [the examples index](README.md) and
 [the integration guide](../docs/guides/getting-started.md) for the underlying contracts.
