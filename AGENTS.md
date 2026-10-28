@@ -40,7 +40,7 @@ Prefer implementation-adjacent tests for private state and external-package test
 
 `keylog_build_test.go` only checks that the current platform's default production dependency graph excludes the optional keylog sink, including transitive imports. Default no-write behavior is tested in `integrationtests/api/keylog_disabled_test.go`; tagged sink and Session/rekey tests cover enabled behavior. Other OS build selections need CI evidence. No test freezes package names, test package names or nesting depth.
 
-Layout inventories are not overriding policy. Historical validation records are not fresh results.
+Documentation inventories in `docs/architecture/overview.md`, `docs/architecture/package-layout.md` and `integrationtests/README.md` have been synchronized with the actual root TLV limits, external constructor/RekeyState/benchmark and default keylog owners. The comparison benchmark also imports the existing `golang.org/x/crypto/chacha20poly1305` dependency; public contract tests use root and stdlib. Historical validation records are not fresh results, and inventories are not overriding policy.
 
 ## Working workflow
 

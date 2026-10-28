@@ -2,8 +2,7 @@
 
 ## Current ownership
 
-`api/` owns public primitive/codec, constructor and RekeyState contracts,
-the default keylog no-write regression, and public benchmarks in `package dgproto_test`;
+`api/` owns public primitive/codec contracts in `package dgproto_test`;
 the top-level TCP/runtime layer uses `package integrationtests`, importing the
 public library as `dgproto`. Ownership is defined by dependency closures rather
 than fixed file counts. This inventory is not a claim of fresh test results.
@@ -38,8 +37,10 @@ Run `go test -count=1 ./integrationtests/...` from the repository root. Plain
   the historical TLV codec, without negotiation or fallback. See the
   [paired migration/rollback guide](../docs/guides/error-message-migration.md),
   including Rust's public u8 restriction; suite inventory is not interop proof.
-  The contract-test files import only the public library and the standard library;
-  this does not describe every benchmark dependency (see `api/benchmark_test.go` below).
+  Contract tests import only the public library and the standard library.
+  The comparison benchmark in `api/benchmark_test.go` additionally imports
+  `golang.org/x/crypto/chacha20poly1305`, an existing module dependency; it is
+  a synthetic in-memory comparison, not a network or TLS benchmark.
   `frame_test.go` owns the complete public frame layout,
   validation/error priority, receive-reserved-field and buffer-ownership suite;
   select it with `go test -run 'TestFrame|TestNewFrame' -count=1 ./integrationtests/api`.
@@ -63,21 +64,15 @@ Run `go test -count=1 ./integrationtests/...` from the repository root. Plain
   imports enforce external visibility without changing test bodies.
   Run `go test -run 'TestHeader|TestNewHeader|TestDecodeTLV|TestEncodeTLV' -count=1 ./integrationtests/api`
   and `go test -run '^$' -bench 'Benchmark(EncodeTLVsPatch|DecodeTLVShapes)' -benchmem -benchtime=5s ./integrationtests/api`.
-- `api/connection_constructor_test.go`: `TestNewConnectionNilPanics` checks
-  nil transport and nil Session constructor misuse, not general configuration validation.
-- `api/rekey_state_test.go`: `TestRekeyStateEpochBoundaries` checks
-  `ComputeKeyConfirm` epoch errors, unchanged state, exact HMAC confirmation bytes,
-  and nil/exhausted state behavior through the public API.
-- `api/keylog_disabled_test.go`: default-build `TestDefaultBuildDoesNotWriteKeyLog`
-  checks that Session construction does not create the requested keylog file.
-  Root `keylog_build_test.go` separately checks the default dependency graph.
-  Run `go test -run 'TestNewConnectionNilPanics|TestRekeyStateEpochBoundaries|TestDefaultBuildDoesNotWriteKeyLog' -count=1 ./integrationtests/api`.
-- `api/benchmark_test.go`: moved general public benchmark coverage and its complete
-  local helpers, `BenchmarkMessengerWireFormats` and `BenchmarkSyntheticWireCodecs`.
-  This file also imports `golang.org/x/crypto/chacha20poly1305` for synthetic
-  comparison envelopes; it is not a public-library-plus-stdlib-only closure.
-  Comparisons are in-memory codec/envelope workloads, not ordinary HTTP/TLS,
-  network throughput or service benchmarks.
+- `api/connection_constructor_test.go`: public nil-dependency constructor panics.
+- `api/rekey_state_test.go`: public RekeyState derivation, confirmation and
+  validation contracts; this does not replace root Session transaction tests.
+- `api/messages_extended_test.go` and `api/tlv_test.go`: public extended-message
+  and TLV contracts with their complete local helper closures.
+- `api/keylog_disabled_test.go`: default-build no-write behavior. Tagged sink
+  tests stay in `internal/keylog/`; root Session integration uses subprocesses.
+- `api/benchmark_test.go`: public frame/message and synthetic envelope comparison
+  benchmarks. Select with `go test -run "^$" -bench . -benchmem ./integrationtests/api`.
 - `connection_send_contract_test.go`, `connection_io_contract_test.go` and
   `server_admission_contract_test.go`: established runtime queue/write/cancellation,
   partial I/O and callback contracts; complete public fixtures stay in
@@ -89,23 +84,15 @@ Run `go test -count=1 ./integrationtests/...` from the repository root. Plain
   remain with this complete stream closure.
 - `tcp_cancellation_test.go`: lane cancellation and stale-deadline isolation,
   with `gatedIOConn` and `observingContext` synchronization fixtures.
+- `tcp_duplex_cancellation_test.go`: simultaneous active read/write I/O proves
+  cancellation deadlines are direction-local, reusing the existing gates.
   `tcp_helpers_test.go` contains public frame construction and bounded waits.
-  Run `go test -count=1 -run 'TestTCPTransport|TestNewTCPTransport|TestHardeningTCP' ./integrationtests`.
+  Run `go test -count=1 -run 'TestTCPTransport|TestNewTCPTransport|TestHardeningTCP|TestTCPDuplex' ./integrationtests`.
 
 Keep mutable-sentinel tests non-parallel: they intentionally replace public
 variables, restore them on exit, and must not overlap other users in the same test
 process. Keep the control and TLV-message files together: `messageSentinel` is a
 shared local helper, not an exported testing API.
-
-`server_stats_test.go` owns the public constructed-default/custom-limit and gated
-resource snapshot lifecycle/concurrent Serve/shutdown contracts, reusing the
-`lifecycleListener`, real Noise helper and bounded waits from the existing runtime
-suite. `server_admission_contract_test.go` also checks snapshot cleanup after
-admission rejection and admission/disconnect panic recovery. Root `server_stats.go`
-owns the additive secret-free API; `server_stats_test.go` at root checks coherent
-map handoff (including before Start), while `server_stats_example_test.go` retains
-the executable godoc example. Select with
-`go test -run 'TestServerStats|TestServerAdmissionDisconnect|ExampleServer_Stats' -count=1 ./...`.
 
 Root Server suites keep complete owners together: `server_handshake_test.go`
 (establishment/allowlist/frame validation), `server_runtime_test.go` (slots,
@@ -119,11 +106,14 @@ for timers/Ping, `connection_receive_test.go` for dispatch/order/handler bounds,
 `connection_lifecycle_test.go` for shutdown/first cause, and `connection_queue_test.go`
 for queue capacity and disposal. `connection_test_helpers_test.go` retains shared
 client/runtime fixtures; specialized start/close, cancellation and send/property
-suites remain separate. Global scheduler and mutable-sentinel tests stay serial.
+suites remain separate. `connection_rekey_boundary_test.go` adds gated caller/runtime
+cancellation and zero/partial-write failures before and after the send-key commit;
+its trigger and commit snapshots require root-private state. Global scheduler
+and mutable-sentinel tests stay serial.
 
 Root retains godoc examples, white-box session/runtime invariants, shared
-`tcp_test_helpers_test.go` fixtures for white-box consumers and nil Connection
-misuse in root `tcp_test.go`, vectors, conformance, fuzz targets and
+`tcp_test_helpers_test.go` fixtures for white-box consumers, vectors,
+conformance, fuzz targets and
 other implementation-adjacent tests. Do not move a network-looking test merely
 because of its name: injected dialers, private state and shared helpers are real
 boundaries. Internal algorithm tests remain beside their stdlib-only leaves.
