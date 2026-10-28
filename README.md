@@ -32,7 +32,7 @@ Use it for desktop-client events, backend command channels, or custom binary pro
 
 > **Pre-1.0 / draft:** Wire compatibility is not yet stable. See [compatibility and upgrades](#compatibility-and-upgrades), including the **0.7.0 ErrorMessage wire break**.
 
-[Quick start](#quick-start) · [Fit and limits](#fit-and-limits) · [Contracts](#contracts-worth-knowing) · [Documentation](#documentation)
+[Quick start](#quick-start) · [Runnable lessons](examples/README.md) · [Independent peers](examples/echo-pair.md) · [Fit and limits](#fit-and-limits) · [Contracts](#contracts-worth-knowing) · [Documentation](#documentation)
 
 ## Install
 

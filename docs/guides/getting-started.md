@@ -106,49 +106,11 @@ Preflight is optional, not automatically performed by send APIs. It is **not a s
 
 ## Server
 
-This complete example generates a server static key, creates a TCP listener, and passes the listener to `Server.Serve`:
+Use the [complete provisioned server command](../../examples/echo-server/main.go) and its [ownership walkthrough](../../examples/echo-server/README.md), with the [canonical binary-input provisioning guide](../../examples/echo-pair.md). It loads the caller-provisioned private identity and one trusted authorized client public key, binds loopback by default, and releases the listener on startup failure or requested shutdown. No empty allowlist, observed-key fallback or secret logging is used.
 
-```go
-package main
+The example-local [server policy](../../examples/internal/echoapp/server.go) installs a validating reply handler, limits handshakes to four and active connections to eight, and sets two-second handshake and one-second write/handler-shutdown budgets. Outbound and handler queues each hold four pending messages (the control queue remains 16); a 15-second inbound idle timeout evicts silent peers but resets on activity. Read timeout and keepalive remain disabled. These example-only limits are not an absolute lifetime bound or deployment recommendation and do not change library defaults. The command joins `Serve` and closes server-owned work on `os.Interrupt`. Its readiness line means the listener was bound, not that a client was admitted. The server stays open after its local reply write until the client validates and closes.
 
-import (
-    "context"
-    "errors"
-    "log"
-    "net"
-
-    dgproto "github.com/datagram-messenger/dgproto-go"
-)
-
-func main() {
-    key, err := dgproto.GenerateStaticKey()
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    listener, err := net.Listen("tcp", ":9000")
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    server, err := dgproto.NewServer(dgproto.ServerConfig{
-        StaticKey: key,
-        Handler: func(ctx context.Context, conn *dgproto.Connection, message any) error {
-            log.Printf("received %T", message)
-            return nil
-        },
-    })
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    if err := server.Serve(listener); err != nil && !errors.Is(err, dgproto.ErrServerClosed) {
-        log.Fatal(err)
-    }
-}
-```
-
-Production services should persist and protect the static key instead of generating a new identity on every start.
+The library's **empty `AllowedClients` permits any valid authenticated client**. Provision explicit allowlists and/or admission policy for your application. Protect, persist and rotate identity and trust files externally; this command is an educational ownership model, not a key manager or production service.
 
 ## Admission and authorization
 

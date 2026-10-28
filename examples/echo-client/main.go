@@ -32,6 +32,10 @@ func run(ctx context.Context, args []string, out io.Writer) error {
 	identity := flags.String("identity", "", "provisioned raw 32-byte private-key file")
 	pinPath := flags.String("server-pin", "", "trusted raw 32-byte server public-key file")
 	if err := flags.Parse(args); err != nil {
+		if err == flag.ErrHelp {
+			_, err = io.WriteString(out, "Usage: echo-client [options]\n  -address string        server TCP address (default 127.0.0.1:7443)\n  -identity string       provisioned raw 32-byte private-key file (required)\n  -server-pin string     trusted raw 32-byte server public-key file (required)\n  -h, -help              show help without loading keys or dialing\n")
+			return err
+		}
 		return errors.New("invalid client options")
 	}
 	if flags.NArg() != 0 || *identity == "" || *pinPath == "" || *address == "" {

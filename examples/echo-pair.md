@@ -36,16 +36,23 @@ when a pin mismatch occurs. Automated tests use synthetic keys in temporary dire
 In the server terminal (substitute your provisioned absolute paths):
 
 ```sh
-go run ./examples/echo-server -listen 127.0.0.1:7443 -identity /secure/server.key -allowed-client /secure/client.pub
+go run ./examples/echo-server -listen 127.0.0.1:7443 -identity "/secure/server.key" -allowed-client "/secure/client.pub"
 ```
 
 In a separate client terminal:
 
 ```sh
-go run ./examples/echo-client -address 127.0.0.1:7443 -identity /secure/client.key -server-pin /secure/server.pub
+go run ./examples/echo-client -address 127.0.0.1:7443 -identity "/secure/client.key" -server-pin "/secure/server.pub"
 ```
 
-On Windows use quoted native paths, for example `-identity "C:\secure\client.key"`.
+For PowerShell, in separate terminals:
+
+```powershell
+go run ./examples/echo-server -listen 127.0.0.1:7443 -identity "C:\secure\server.key" -allowed-client "C:\secure\client.pub"
+go run ./examples/echo-client -address 127.0.0.1:7443 -identity "C:\secure\client.key" -server-pin "C:\secure\server.pub"
+```
+
+`-h` / `-help` on either peer print curated usage and exit successfully without loading files or opening sockets. Help output failure is still an error; invalid input diagnostics remain generic and never echo paths. Parsing stops at help, so later arguments are not processed.
 For direct signal handling, build each command to an executable in an external temporary
 folder and run that executable instead of the `go run` wrapper. The binaries subscribe
 to `os.Interrupt` (Ctrl+C in an attached console); the client exits after one validated
@@ -85,7 +92,17 @@ there are no admission/disconnect hooks. `Server.Close` is not an overall shutdo
 deadline, and a positive handler shutdown timeout does not kill detached goroutines.
 Server limits here are four concurrent handshakes and eight active connections;
 handshake timeout is two seconds, write and handler-shutdown budgets one second.
-These are example-local choices, not changed library defaults or deployment budgets.
+Outbound and handler queues each hold four pending messages; the runtime control
+queue remains 16. A 15-second inbound idle timeout evicts silent peers. Inbound
+activity resets that timer, so it is not an absolute connection lifetime. Read
+timeout and keepalive remain disabled. These are example-local choices, not
+changed library defaults, complete DoS protection or deployment budgets.
+
+Start with [the learning index](README.md), then see the [client walkthrough](echo-client/README.md),
+[server walkthrough](echo-server/README.md) and [shared policy](internal/echoapp/README.md).
+If startup fails, check required nonempty file paths, raw file sizes and listener
+availability. If exchange fails, check provisioned pins and allowlisting through
+your trusted channel; never replace a mismatched pin with an observed network key.
 
 ## Verify
 

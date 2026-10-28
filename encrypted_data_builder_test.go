@@ -154,5 +154,6 @@ func ExampleNewEncryptedData() {
 	}
 	fmt.Println(string(message.Fields[0].Value))
 	// Send message using an existing Connection; keep message immutable while queued.
+
 	// Output: hello
 }

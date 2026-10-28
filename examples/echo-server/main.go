@@ -33,6 +33,10 @@ func run(ctx context.Context, args []string, out io.Writer) error {
 	identity := flags.String("identity", "", "provisioned raw 32-byte private-key file")
 	clientPath := flags.String("allowed-client", "", "trusted raw 32-byte client public-key file")
 	if err := flags.Parse(args); err != nil {
+		if err == flag.ErrHelp {
+			_, err = io.WriteString(out, "Usage: echo-server [options]\n  -listen string         TCP listen address (default 127.0.0.1:7443)\n  -identity string       provisioned raw 32-byte private-key file (required)\n  -allowed-client string trusted raw 32-byte client public-key file (required)\n  -h, -help              show help without loading keys or listening\n")
+			return err
+		}
 		return errors.New("invalid server options")
 	}
 	if flags.NArg() != 0 || *identity == "" || *clientPath == "" || *address == "" {

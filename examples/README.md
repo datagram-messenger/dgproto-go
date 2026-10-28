@@ -4,7 +4,22 @@ Run these commands from the repository root with a supported, security-patched G
 
 | Example | Run | Demonstrates |
 |---------|-----|--------------|
-| [Pinned loopback echo](echo/main.go) | `go run ./examples/echo` | Allowlisting, a trusted server pin, explicit client startup, TLV payload validation, padded write-wait, and shutdown/join |
+| [Pinned loopback echo](echo/README.md) | `go run ./examples/echo` | Zero-setup, copyable public-API exchange with ephemeral identities |
+| [Independent server](echo-server/README.md) | `go run ./examples/echo-server -help` | Provisioned identity, single-client allowlist, listener ownership and shutdown |
+| [Independent client](echo-client/README.md) | `go run ./examples/echo-client -help` | Provisioned identity and trusted pin, bounded request and reply validation |
+
+## Learning path
+
+1. Start with [loopback echo](echo/README.md); read its public-only `main.go` from setup through cleanup.
+2. Follow the canonical [peer provisioning guide](echo-pair.md), then the client and server walkthroughs. The [shared implementation](internal/echoapp/README.md) separates identity input, schema, client lifetime and server ownership within one example-local package.
+3. Read the executable godoc lessons: [DialContext and DialAndStartContext](../client_example_test.go), [NewEncryptedData](../encrypted_data_builder_test.go), [EncodedLen](../encrypted_data_size_example_test.go), [ValidateFrameSize](../integrationtests/api/encrypted_data_size_example_test.go), and [Server.Stats](../server_stats_example_test.go). They exercise public features without redundant commands.
+
+```sh
+go test -list '^Example' . ./integrationtests/api
+go test -run '^Example' -count=1 -v . ./integrationtests/api
+```
+
+For Windows cmd.exe, use double quotes around test selectors.
 
 For separate terminals with provisioned identities, see [independent pinned peers](echo-pair.md): `go run ./examples/echo-server` and `go run ./examples/echo-client` require explicit private identity and trusted public-key file flags. Their input, trust and lifecycle contracts are documented there; neither command exports secrets or adopts observed keys.
 

@@ -16,10 +16,14 @@ import (
 )
 
 const (
-	demoPayload            = "hello DGProto"
-	successOutput          = "authenticated application echo received\n"
-	padLength        uint8 = 16
-	operationTimeout       = time.Second
+	streamID         uint16 = 1
+	requestType      uint8  = 1
+	replyType        uint8  = 2
+	payloadField     uint8  = 1
+	demoPayload             = "hello DGProto"
+	successOutput           = "authenticated application echo received\n"
+	padLength        uint8  = 16
+	operationTimeout        = time.Second
 )
 
 func main() {
@@ -68,11 +72,11 @@ func exchange(ctx context.Context) (err error) {
 			if !ok {
 				return nil // The runtime owns protocol control messages.
 			}
-			if err := validateEcho(data, 1); err != nil {
+			if err := validateEcho(data, requestType); err != nil {
 				return err
 			}
 			// Own the reply buffers; never mutate them, even if write-wait is canceled.
-			reply, err := dgproto.NewEncryptedData(data.StreamID, 2, data.Fields...)
+			reply, err := dgproto.NewEncryptedData(streamID, replyType, data.Fields...)
 			if err != nil {
 				return err
 			}
@@ -126,7 +130,7 @@ func exchange(ctx context.Context) (err error) {
 				if !ok {
 					return nil
 				}
-				validationErr := validateEcho(data, 2)
+				validationErr := validateEcho(data, replyType)
 				select {
 				case received <- validationErr:
 					return validationErr
@@ -156,7 +160,7 @@ func exchange(ctx context.Context) (err error) {
 	}()
 	c.Start(runtimeCtx) // DialContext returns a stopped, caller-owned Connection.
 
-	request, err := dgproto.NewEncryptedData(1, 1, dgproto.TLV{Type: 1, Value: []byte(demoPayload)})
+	request, err := dgproto.NewEncryptedData(streamID, requestType, dgproto.TLV{Type: payloadField, Value: []byte(demoPayload)})
 	if err != nil {
 		return err
 	}
@@ -195,16 +199,16 @@ func waitEcho(ctx context.Context, received <-chan error, done <-chan struct{}, 
 }
 
 func joinClientClose(operationErr, closeErr error) error {
-	if operationErr == nil && (errors.Is(closeErr, io.EOF) || errors.Is(closeErr, net.ErrClosed) ||
-		errors.Is(closeErr, dgproto.ErrConnectionClosed)) {
+	if operationErr == nil && (closeErr == io.EOF || closeErr == net.ErrClosed ||
+		closeErr == dgproto.ErrConnectionClosed) {
 		return nil // Only after a validated reply; never hide an operation failure.
 	}
 	return errors.Join(operationErr, closeErr)
 }
 
 func validateEcho(data *dgproto.EncryptedData, messageType uint8) error {
-	if data == nil || data.StreamID != 1 || data.AppMessageType != messageType ||
-		len(data.Fields) != 1 || data.Fields[0].Type != 1 || string(data.Fields[0].Value) != demoPayload {
+	if data == nil || data.StreamID != streamID || data.AppMessageType != messageType ||
+		len(data.Fields) != 1 || data.Fields[0].Type != payloadField || string(data.Fields[0].Value) != demoPayload {
 		return errors.New("invalid demo application envelope")
 	}
 	return nil
