@@ -60,4 +60,5 @@
 // The first observed terminal cause is retained. Close attempts a close-frame
 // write, not a peer-acknowledged handshake or queue drain. Server Abort closes
 // networking without waiting for callbacks; it cannot kill handler/hook goroutines.
+// Coordinate service-level shutdown externally to bound callback and downstream work.
 package dgproto
