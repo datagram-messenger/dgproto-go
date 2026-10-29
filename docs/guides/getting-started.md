@@ -124,6 +124,28 @@ Noise XX authenticates the peer static key; application authorization remains a 
 
 All three methods return an error; callers should handle it.
 
+## Error handling
+
+Most API errors fall into three categories: configuration rejection, terminal connection errors, and send errors.
+
+**Configuration errors** are returned synchronously from `NewServer`, `DialContext`, or `NewEncryptedData` before any I/O occurs. They indicate programmer mistakes (missing key, invalid timeout combination, malformed envelope) and should not be retried without fixing the configuration.
+
+**Terminal connection errors** are observed via `conn.Err()` after `conn.Done()` closes. The first cause is retained and stable; later calls return the same value. Common causes:
+
+| Error | Meaning |
+|---|---|
+| `ErrConnectionClosed` | Normal local `Close()` |
+| `context.Canceled` | Runtime context was canceled |
+| `context.DeadlineExceeded` | A timeout fired (read, write, idle, or keepalive) |
+| `io.EOF` / `io.ErrUnexpectedEOF` | Peer closed the TCP connection |
+| `ErrAuthenticationFailure` | AEAD tag mismatch — connection is terminated immediately |
+
+Do not inspect `conn.Err()` before `conn.Done()` closes; the cause may not yet be recorded. Use `errors.Is` for sentinel matching.
+
+**Send errors** from `Send`, `SendAndWait`, and their variants indicate either queue saturation (`ErrOutboundQueueFull`) or a terminal connection error. A terminal error from a send means the connection is already closing; the message was not delivered. `ErrOutboundQueueFull` from `TrySend` is not terminal — the connection remains open and the caller may retry or apply backpressure.
+
+Handler errors and panics terminate the connection. If your handler returns a non-nil error, the connection closes with that error as the cause. Recover panics explicitly if you want to log and continue; unrecovered panics propagate to the runtime and close the connection.
+
 ## Production timeout guidance
 
 `NewServer` uses a 10-second `HandshakeTimeout` when the configured value is zero;

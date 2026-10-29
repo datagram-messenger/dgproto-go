@@ -82,9 +82,15 @@ The reader validates framing before decryption and authenticates the exact recei
 
 ## Concurrency and lifecycle
 
-Each connection has dedicated read and write loops and a handler worker. Exported methods are safe for concurrent use, while writes are serialized. Received application messages enter a bounded handler queue and handlers run serially. No pooling, batching, parallel-handler, lock-free, or other unimplemented optimization is implied.
+Each connection has dedicated read, write, and maintenance loops plus an optional handler worker. Exported methods are safe for concurrent use; writes are serialized by the single write loop. Received application messages enter a bounded handler queue and handlers run serially per connection. No pooling, batching, parallel-handler, lock-free, or other unimplemented optimization is implied.
 
-Termination is coordinated once and retains the first observed cause. It cancels connection context, unblocks queued work, closes transport state, and makes later operations observe the terminal result. Handler errors and panics terminate the connection. Admission occurs after authentication and before loops start; server limits bound handshakes and established connections independently.
+`Start(ctx)` is idempotent via `sync.Once`. A pre-canceled context stops the connection synchronously without starting any loops or dispatching queued work: the terminal cause is recorded and `Done` is closed immediately. A context canceled after the loops are running records the cancellation cause before the peer can observe `SessionClose` and race to publish EOF first, then attempts a graceful close write.
+
+`Close()` sends a `SessionClose{Code: 0, Reason: "local shutdown"}` frame and then shuts down. The close-frame write uses `WriteTimeout` as a grace period; if `WriteTimeout` is zero, a 100 ms fallback is used. The write result is collected from the write loop; if the connection context is already done, the context cause is returned instead. `Close` is also idempotent: concurrent or repeated calls are safe.
+
+Termination is coordinated once and retains the first observed cause. It cancels the connection context, drains and fails pending outbound messages, disposes the handler queue, closes the session and transport, and makes all later operations observe the terminal result. Handler errors and panics terminate the connection. Admission occurs after authentication and before loops start; server limits bound handshakes and established connections independently.
+
+`Done` closes only after all runtime loops have exited and terminal queues are disposed. A detached handler (one that exceeded `HandlerShutdownTimeout`) may still be running after `Done` closes; it retains its in-progress message but cannot enqueue further work.
 
 `Server.Stats` is advisory and safe during Serve, Close, Abort and callbacks on a
 server constructed by NewServer. PendingConnections, ActiveConnections and

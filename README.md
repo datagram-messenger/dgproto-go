@@ -107,19 +107,33 @@ Continue with [server setup](docs/guides/getting-started.md#server), [admission 
 
 ## Contracts worth knowing
 
+### Send APIs
+
 | API | Success means |
 |-----|---------------|
 | `Send` / `TrySend` | Nonblocking queue acceptance; saturation returns `ErrOutboundQueueFull` |
 | `SendContext` | Queue acceptance after waiting for capacity, not network I/O |
 | `SendAndWait` | Complete **local** transport write, including any required rekey |
+| `SendPadded` / `SendPaddedContext` / `SendPaddedAndWait` | Same as above; padding is random authenticated cleartext, 0–255 bytes |
 
-The padded variants follow the same acceptance/write distinction. **None promises peer receipt, processing, acknowledgement, or durable delivery.** Define application acknowledgements, retries, and idempotency explicitly.
+**None promises peer receipt, processing, acknowledgement, or durable delivery.** Define application acknowledgements, retries, and idempotency explicitly.
+
+Messages and their reachable buffers are not snapshotted at enqueue. Keep them immutable while pending. A canceled write-wait does not retract an accepted message and does not permit immediate buffer reuse.
+
+### Connection ownership and errors
 
 - **Runtime ownership:** call `Start(runtimeCtx)` and always close a dialed connection, even if it never starts. The dial context bounds establishment only; canceling it after success does not stop the runtime.
-- **Shutdown:** `Connection.Close` attempts a close-frame write, not a queue drain or peer-acknowledged close. `Done` tracks runtime completion; `Err` retains the first terminal cause.
-- **Server shutdown:** `Close` waits for server-owned work. A positive `HandlerShutdownTimeout` detaches a stuck canceled handler; zero can wait indefinitely. `Abort` closes networking without waiting for callbacks, but cannot kill their goroutines. Bound handler and hook work yourself.
+- **Pre-canceled context:** passing an already-canceled context to `Start` stops the connection synchronously without starting any loops.
+- **Shutdown:** `Connection.Close` attempts a close-frame write (bounded by `WriteTimeout`, or 100 ms if zero), then shuts down. It is not a queue drain or peer-acknowledged close. `Done` closes after all loops exit; `Err` retains the first terminal cause.
+- **Error inspection:** check `conn.Err()` only after `conn.Done()` closes. Use `errors.Is` for sentinel matching; the cause is stable once recorded.
+- **Handler errors:** a non-nil handler return or unrecovered panic terminates the connection with that error as the cause.
 
-See [sending and ownership](docs/guides/getting-started.md#sending-and-ownership) and the [Go API reference](https://pkg.go.dev/github.com/datagram-messenger/dgproto-go) for the full contracts, including lower-level session/rekey APIs.
+### Server shutdown
+
+- `Close` stops networking and waits for server-owned work. A positive `HandlerShutdownTimeout` detaches a stuck canceled handler (does not kill it); zero can wait indefinitely.
+- `Abort` closes networking without waiting for callbacks and cannot kill goroutines. Bound handler and hook work yourself; coordinate service-level shutdown externally.
+
+See [sending and ownership](docs/guides/getting-started.md#sending-and-ownership), [error handling](docs/guides/getting-started.md#error-handling), and the [Go API reference](https://pkg.go.dev/github.com/datagram-messenger/dgproto-go) for the full contracts, including lower-level session/rekey APIs.
 
 ## Fit and limits
 
