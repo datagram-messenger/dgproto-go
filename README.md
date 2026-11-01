@@ -125,8 +125,8 @@ Messages and their reachable buffers are not snapshotted at enqueue. Keep them i
 - **Runtime ownership:** call `Start(runtimeCtx)` and always close a dialed connection, even if it never starts. The dial context bounds establishment only; canceling it after success does not stop the runtime.
 - **Pre-canceled context:** passing an already-canceled context to `Start` stops the connection synchronously without starting any loops.
 - **Shutdown:** `Connection.Close` attempts a close-frame write (bounded by `WriteTimeout`, or 100 ms if zero), then shuts down. It is not a queue drain or peer-acknowledged close. `Done` closes after all loops exit; `Err` retains the first terminal cause.
-- **Error inspection:** check `conn.Err()` only after `conn.Done()` closes. Use `errors.Is` for sentinel matching; the cause is stable once recorded.
-- **Handler errors:** a non-nil handler return or unrecovered panic terminates the connection with that error as the cause.
+- **Error inspection:** `conn.Err()` may be nil before a cause is recorded; wait for `conn.Done()` when runtime completion is required. Use `errors.Is` for sentinel matching; the first recorded cause remains stable.
+- **Handler errors:** a non-nil handler return or panic terminates the connection; the runtime recovers panics into an error wrapping `ErrHandlerPanic`. The handler failure becomes the terminal cause only if no earlier cause was recorded.
 
 ### Server shutdown
 

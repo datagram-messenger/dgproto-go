@@ -126,25 +126,29 @@ All three methods return an error; callers should handle it.
 
 ## Error handling
 
-Most API errors fall into three categories: configuration rejection, terminal connection errors, and send errors.
+Distinguish local validation, establishment failures, terminal runtime causes, and send outcomes; an error alone is not a delivery receipt.
 
-**Configuration errors** are returned synchronously from `NewServer`, `DialContext`, or `NewEncryptedData` before any I/O occurs. They indicate programmer mistakes (missing key, invalid timeout combination, malformed envelope) and should not be retried without fixing the configuration.
+**Validation and establishment errors:** `NewServer` and client configuration validation reject invalid keys, timeouts, or limits before networking starts. `DialContext` and `DialAndStartContext` can also fail during dialing or the handshake (including cancellation, timeout, or pin mismatch); not every error they return is a configuration error. `NewEncryptedData` validates and copies an envelope without I/O. Correct invalid inputs before retrying; construction and `ValidateFrameSize` do not reserve queue capacity. Runtime sends enqueue without validating the message: serialization/validation failures occur in the writer and terminate the connection.
 
-**Terminal connection errors** are observed via `conn.Err()` after `conn.Done()` closes. The first cause is retained and stable; later calls return the same value. Common causes:
+**Terminal connection errors** can be observed via `conn.Err()`. It may be nil before a cause is recorded; wait for `conn.Done()` when runtime completion is required. The first recorded cause remains stable, even if another failure races with shutdown. Common causes:
 
 | Error | Meaning |
 |---|---|
-| `ErrConnectionClosed` | Normal local `Close()` |
+| `ErrConnectionClosed` | Normal local `Close()` or received `SessionClose`, unless an earlier terminal cause was recorded |
 | `context.Canceled` | Runtime context was canceled |
-| `context.DeadlineExceeded` | A timeout fired (read, write, idle, or keepalive) |
-| `io.EOF` / `io.ErrUnexpectedEOF` | Peer closed the TCP connection |
-| `ErrAuthenticationFailure` | AEAD tag mismatch — connection is terminated immediately |
+| `context.DeadlineExceeded` | Runtime context deadline or a read/write operation context deadline expired |
+| `ErrIdleTimeout` | No inbound activity within the configured idle window |
+| `ErrKeepaliveTimeout` | An outstanding Ping was not acknowledged within the keepalive window |
+| `io.EOF` / `io.ErrUnexpectedEOF` | Peer closed the stream, possibly partway through a frame |
+| `ErrAuthenticationFailure` | AEAD authentication failed; runtime terminates |
 
-Do not inspect `conn.Err()` before `conn.Done()` closes; the cause may not yet be recorded. Use `errors.Is` for sentinel matching.
+Use `errors.Is` for sentinels. A transport error is returned unchanged when its context has not expired (apart from closed-socket normalization); for network timeouts use `errors.As` with `net.Error` and its `Timeout()` method, or `errors.Is(err, os.ErrDeadlineExceeded)` where supported. Do not classify every network, idle, or keepalive timeout as `context.DeadlineExceeded`.
 
-**Send errors** from `Send`, `SendAndWait`, and their variants indicate either queue saturation (`ErrOutboundQueueFull`) or a terminal connection error. A terminal error from a send means the connection is already closing; the message was not delivered. `ErrOutboundQueueFull` from `TrySend` is not terminal — the connection remains open and the caller may retry or apply backpressure.
+**Send outcomes:** `Send`, `TrySend`, and `SendPadded` return after queue acceptance, not local write completion. `ErrOutboundQueueFull` rejects that send without enqueueing it and is not itself terminal; apply bounded backpressure rather than assuming the connection cannot fail concurrently. Context variants wait for capacity; pre-canceled calls or cancellation while still waiting for capacity do not enqueue that message. Once accepted, cancellation does **not** retract it. In particular, `SendAndWait` / `SendPaddedAndWait` may return `context.Canceled` or `context.DeadlineExceeded` while the accepted message continues toward the peer; caller cancellation alone does not terminate the runtime.
 
-Handler errors and panics terminate the connection. If your handler returns a non-nil error, the connection closes with that error as the cause. Recover panics explicitly if you want to log and continue; unrecovered panics propagate to the runtime and close the connection.
+A write-wait success means the complete **local** write (including required rekey), not peer receipt, processing, acknowledgement, or durable delivery. A terminal or write error can leave delivery unknown, including when bytes were already written; it is not proof the message was undelivered. Retrying an uncertain send needs application-level idempotency and acknowledgement policy. Enqueue does not snapshot messages or reachable buffers: keep them immutable while pending, including after a canceled write-wait. Cancellation alone does not permit buffer reuse; successful write-wait does. Use fresh immutable messages for acceptance-only sends.
+
+Handler errors and panics terminate the connection (a recovered runtime panic wraps `ErrHandlerPanic`); they become the terminal cause only if no earlier cause was recorded. If the application deliberately recovers inside its handler and returns nil, dispatch can continue, but it must maintain its own state invariants.
 
 ## Production timeout guidance
 
