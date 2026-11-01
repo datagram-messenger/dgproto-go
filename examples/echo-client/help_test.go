@@ -9,16 +9,25 @@ import (
 )
 
 func TestInvalidFlagValuesAreSafe(t *testing.T) {
-	for _, args := range [][]string{
-		{"-identity"}, {"-server-pin"}, {"-address"},
-		{"-identity="}, {"-server-pin="}, {"-address="},
-		{"-identity", "sensitive-input", "-server-pin", "sensitive-input", "extra"},
-		{"-unknown=sensitive-input"},
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"-identity"}, "invalid client options"},
+		{[]string{"-server-pin"}, "invalid client options"},
+		{[]string{"-address"}, "invalid client options"},
+		{[]string{"-identity=", "-server-pin", "sensitive-input"}, "missing client options"},
+		{[]string{"-identity", "sensitive-input", "-server-pin="}, "missing client options"},
+		{[]string{"-identity", "sensitive-input", "-server-pin", "sensitive-input", "-address="}, "missing client options"},
+		{[]string{"-identity", "sensitive-input", "-server-pin", "sensitive-input", "extra"}, "missing client options"},
+		{[]string{"-unknown=sensitive-input"}, "invalid client options"},
 	} {
 		var out bytes.Buffer
-		err := run(context.Background(), args, &out)
-		if err == nil || out.Len() != 0 || strings.Contains(err.Error(), "sensitive-input") {
-			t.Fatalf("invalid flags leaked input or succeeded")
+		err := run(context.Background(), tc.args, &out)
+		// With all other required flags supplied, exact option errors prove
+		// rejection happens before attempting to load either input file.
+		if err == nil || err.Error() != tc.want || out.Len() != 0 {
+			t.Fatal("invalid flags were not rejected before loading inputs")
 		}
 	}
 	ctx, cancel := context.WithCancel(context.Background())

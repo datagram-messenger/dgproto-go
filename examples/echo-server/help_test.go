@@ -8,6 +8,35 @@ import (
 	"testing"
 )
 
+func TestInvalidFlagValuesAreSafe(t *testing.T) {
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"-identity"}, "invalid server options"},
+		{[]string{"-allowed-client"}, "invalid server options"},
+		{[]string{"-listen"}, "invalid server options"},
+		{[]string{"-identity=", "-allowed-client", "sensitive-input"}, "missing server options"},
+		{[]string{"-identity", "sensitive-input", "-allowed-client="}, "missing server options"},
+		{[]string{"-identity", "sensitive-input", "-allowed-client", "sensitive-input", "-listen="}, "missing server options"},
+		{[]string{"-identity", "sensitive-input", "-allowed-client", "sensitive-input", "extra"}, "missing server options"},
+		{[]string{"-unknown=sensitive-input"}, "invalid server options"},
+	} {
+		var out bytes.Buffer
+		err := run(context.Background(), tc.args, &out)
+		// Reject flags before reading provisioned identities or listening.
+		if err == nil || err.Error() != tc.want || out.Len() != 0 {
+			t.Fatal("invalid flags were not rejected before loading inputs")
+		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var out bytes.Buffer
+	if err := run(ctx, []string{"-help"}, &out); !errors.Is(err, context.Canceled) || out.Len() != 0 {
+		t.Fatal("canceled help performed output")
+	}
+}
+
 func TestHelpIsSafe(t *testing.T) {
 	for _, flag := range []string{"-h", "-help"} {
 		var out bytes.Buffer
