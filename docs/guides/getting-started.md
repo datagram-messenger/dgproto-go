@@ -140,7 +140,7 @@ Distinguish local validation, establishment failures, terminal runtime causes, a
 | `ErrIdleTimeout` | No inbound activity within the configured idle window |
 | `ErrKeepaliveTimeout` | An outstanding Ping was not acknowledged within the keepalive window |
 | `io.EOF` / `io.ErrUnexpectedEOF` | Peer closed the stream, possibly partway through a frame |
-| `ErrAuthenticationFailure` | AEAD authentication failed; runtime terminates |
+| `ErrAuthentication` | AEAD authentication failed; runtime terminates |
 
 Use `errors.Is` for sentinels. A transport error is returned unchanged when its context has not expired (apart from closed-socket normalization); for network timeouts use `errors.As` with `net.Error` and its `Timeout()` method, or `errors.Is(err, os.ErrDeadlineExceeded)` where supported. Do not classify every network, idle, or keepalive timeout as `context.DeadlineExceeded`.
 
