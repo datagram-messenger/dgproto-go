@@ -238,15 +238,51 @@ func TestDialAndStartContextWrongPinAndHandlerFailure(t *testing.T) {
 		t.Fatalf("wrong-pin result: %v", err)
 	}
 	cause := errors.New("application handler rejected message")
-	config.Handler = func(context.Context, *dgproto.Connection, any) error { return cause }
+	received := make(chan uint64, 1)
+	reject := make(chan struct{})
+	config.Handler = func(handlerCtx context.Context, _ *dgproto.Connection, message any) error {
+		ack, ok := message.(*dgproto.Ack)
+		if !ok || len(ack.Sequences) != 1 {
+			return errors.New("unexpected handler message")
+		}
+		received <- ack.Sequences[0]
+		select {
+		case <-reject:
+			return cause
+		case <-handlerCtx.Done():
+			return handlerCtx.Err()
+		}
+	}
 	c, _, err = dgproto.DialAndStartContext(ctx, ctx, address, config)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer c.Close()
+	defer func() {
+		select {
+		case <-reject:
+		default:
+			close(reject)
+		}
+	}()
+	// The peer can reply before the writer publishes local completion. Keep
+	// handler shutdown out of that interval: SendAndWait may otherwise return
+	// the terminal cause instead of success for the still-pending write.
 	if err := c.SendAndWait(ctx, dgproto.Ack{Sequences: []uint64{7}}); err != nil {
 		t.Fatal(err)
 	}
+	select {
+	case sequence := <-received:
+		if sequence != 1 {
+			t.Fatalf("handler ack sequence: %d", sequence)
+		}
+	case <-ctx.Done():
+		t.Fatal("configured handler did not receive reply")
+	}
+	if err := c.Err(); err != nil {
+		t.Fatalf("terminal cause before handler rejection: %v", err)
+	}
+	close(reject)
 	awaitStartedClient(t, c)
 	if !errors.Is(c.Err(), cause) {
 		t.Fatalf("handler cause: %v", c.Err())

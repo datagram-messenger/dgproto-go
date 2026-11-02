@@ -7,6 +7,7 @@ import (
 	"net"
 	"reflect"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -86,6 +87,66 @@ func TestSendAndWaitCompletesAfterWriteAndPropagatesFailure(t *testing.T) {
 		t.Fatal("write failure was lost")
 	}
 	waitConnection(t, failed)
+}
+
+// Hold the successful transport return so the handler can terminate the runtime
+// after peer receipt but before writeLoop publishes this item's completion.
+// This models a writer descheduled immediately after the underlying write.
+type heldWriteCompletionConn struct {
+	net.Conn
+	written chan struct{}
+	release chan struct{}
+}
+
+func (conn *heldWriteCompletionConn) Write(data []byte) (int, error) {
+	n, err := conn.Conn.Write(data)
+	close(conn.written)
+	<-conn.release
+	return n, err
+}
+
+func TestSendAndWaitHandlerFailureBeforeWriteCompletion(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		cause := errors.New("handler rejected reply before write completion")
+		connection, peerSession, peerTransport, cleanup := testConnectionPair(t, ConnectionConfig{
+			Handler: func(context.Context, *Connection, any) error { return cause },
+		})
+		defer cleanup()
+		transport := &heldWriteCompletionConn{
+			Conn:    connection.transport.conn,
+			written: make(chan struct{}),
+			release: make(chan struct{}),
+		}
+		connection.transport.conn = transport
+		defer close(transport.release)
+		connection.Start(context.Background())
+		result := make(chan error, 1)
+		go func() { result <- connection.SendAndWait(context.Background(), Ack{Sequences: []uint64{7}}) }()
+		message := readConnectionMessage(t, peerTransport, peerSession)
+		if got := message.(*Ack).Sequences; !reflect.DeepEqual(got, []uint64{7}) {
+			t.Fatalf("ack = %v", got)
+		}
+		<-transport.written
+		synctest.Wait()
+		select {
+		case err := <-result:
+			t.Fatalf("completed before transport returned: %v", err)
+		default:
+		}
+		writeConnectionMessage(t, peerTransport, peerSession, Ack{Sequences: []uint64{1}})
+		if err := receiveBounded(t, result); !errors.Is(err, cause) {
+			t.Fatalf("pending write result = %v, want handler cause", err)
+		}
+		if !errors.Is(connection.Err(), cause) {
+			t.Fatalf("terminal cause = %v", connection.Err())
+		}
+		// The send waiter must not depend on the stalled writer exiting.
+		select {
+		case <-connection.Done():
+			t.Fatal("runtime completed while transport write was held")
+		default:
+		}
+	})
 }
 
 func TestSendAndWaitCloseRaceCompletesWithoutLeak(t *testing.T) {
