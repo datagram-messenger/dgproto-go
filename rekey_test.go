@@ -220,6 +220,97 @@ func snapshotReceiveState(s *Session) receiveStateSnapshot {
 	}
 }
 
+func TestSessionRejectedFramesPreserveEpochState(t *testing.T) {
+	sender, receiver := testSessions(t)
+	now := time.Unix(100, 0)
+	receiver.now = func() time.Time { return now }
+	receiver.graceFrames = 2
+	first, err := sender.Send(PingPong{Nonce: 1}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := receiver.Receive(first); err != nil {
+		t.Fatal(err)
+	}
+	delayed, err := sender.Send(PingPong{Nonce: 2}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sender.sendMu.Lock()
+	rekey, err := sender.startRekeyLocked(0)
+	sender.sendMu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sender.MarkRekeySent(rekey); err != nil {
+		t.Fatal(err)
+	}
+	receiveRekey(t, receiver, rekey)
+	current, err := sender.Send(PingPong{Nonce: 3}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := receiver.Receive(current); err != nil {
+		t.Fatal(err)
+	}
+	forgedCurrent, forgedPrevious, forgedRekey := current, first, rekey
+	forgedCurrent.Tag[0] ^= 1
+	forgedPrevious.Tag[0] ^= 1
+	forgedRekey.Tag[0] ^= 1
+	for _, tc := range []struct {
+		name  string
+		frame Frame
+		want  error
+	}{
+		{"forged current duplicate", forgedCurrent, ErrAuthentication},
+		{"forged previous duplicate", forgedPrevious, ErrAuthentication},
+		{"authentic current duplicate", current, ErrReplayDuplicate},
+		{"authentic previous duplicate", first, ErrReplayDuplicate},
+		{"forged previous rekey", forgedRekey, ErrAuthentication},
+		{"authenticated previous rekey rollback", rekey, ErrInvalidEpoch},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			before := snapshotReceiveState(receiver)
+			if _, err := receiver.Receive(tc.frame); !errors.Is(err, tc.want) {
+				t.Errorf("Receive = %v, want %v", err, tc.want)
+			}
+			if after := snapshotReceiveState(receiver); after != before {
+				t.Fatal("rejected frame changed keys, epoch, either replay window, or grace")
+			}
+		})
+	}
+	before := snapshotReceiveState(receiver)
+	if _, err := receiver.Receive(delayed); err != nil {
+		t.Fatalf("delayed previous frame: %v", err)
+	}
+	after := snapshotReceiveState(receiver)
+	if after.previousReplay == before.previousReplay {
+		t.Fatal("accepted previous frame did not commit its own replay window")
+	}
+	after.previousReplay = before.previousReplay
+	if after != before {
+		t.Fatal("previous frame changed current state or spent current-frame grace")
+	}
+	// Authenticated malformed ordinary traffic still spends its sequence and
+	// the final current-frame grace unit before typed decoding fails.
+	malformed, err := sender.SendPayload(MessageTypePingPong, []byte{0}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := receiver.Receive(malformed); !errors.Is(err, ErrMessageLength) {
+		t.Fatalf("malformed ordinary frame: %v", err)
+	}
+	if receiver.graceRemaining != 0 || receiver.previousReceive != nil {
+		t.Fatal("authenticated current frame did not retire exhausted grace")
+	}
+	if _, err := receiver.Receive(malformed); !errors.Is(err, ErrReplayDuplicate) {
+		t.Fatalf("malformed retry: %v", err)
+	}
+	if _, err := receiver.Receive(first); !errors.Is(err, ErrAuthentication) {
+		t.Fatalf("expired previous duplicate: %v", err)
+	}
+}
+
 func TestSessionRejectedRekeyIsAtomic(t *testing.T) {
 	for _, tc := range []struct {
 		name    string

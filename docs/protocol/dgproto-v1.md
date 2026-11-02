@@ -368,7 +368,17 @@ and used in WireGuard):
   which of the most recent Sequence Numbers below `highest_seq` have
   already been accepted.
 
-Validation algorithm for an incoming frame with Sequence Number `n`:
+After framing/session/type/nonzero-sequence validation, a receiver MUST
+authenticate an incoming frame under the current key or an applicable retained
+previous key (§4.4.1) before classifying it as a replay or too old. If neither
+applicable key authenticates it, the result MUST be an authentication failure,
+regardless of either replay window. For an ordinary (non-`RekeyInit`) frame,
+replay classification MUST use only the window of the authenticated epoch.
+The previous-key `RekeyInit` duplicate/rollback rule in §4.4.1 takes precedence
+over that key's replay window.
+
+Validation algorithm for an authenticated frame with Sequence Number `n` in
+its selected epoch's replay window:
 
 1. If `n > highest_seq`: accept, shift the bitmap by `n - highest_seq`,
    set `highest_seq = n`, mark bit for `n`.

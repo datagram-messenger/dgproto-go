@@ -78,7 +78,7 @@ Rekey is serialized with sending. The writer commits a new send epoch only after
 
 ## Receive, replay, and previous epoch
 
-The reader validates framing before decryption and authenticates the exact received header (including preserved unknown flags/reserved bytes) plus cleartext padding. It selects current or permitted previous receive-epoch state and checks the 2048-entry replay window. Failed authentication does not advance replay state; an authenticated malformed ordinary message consumes its sequence. Rekey validation and epoch/key/replay/grace changes commit atomically. Previous-epoch state exists narrowly for in-flight transition traffic and is retired by the rekey state machine; arbitrary old epochs are rejected.
+The reader validates framing before decryption and authenticates the exact received header (including preserved unknown flags/reserved bytes) plus cleartext padding. For nonzero sequences, it authenticates under the current or permitted previous key before reporting duplicate/too-old from that epoch's 2048-entry replay window. A frame authenticated by neither applicable key returns `ErrAuthentication`, even if its sequence was seen or is too old; a previous-key `RekeyInit` instead returns `ErrInvalidEpoch` as duplicate/rollback without committing state. Failed authentication does not advance either replay window or spend grace; an authenticated malformed ordinary message consumes its sequence. Rekey validation and epoch/key/replay/grace changes commit atomically. Previous-epoch state exists narrowly for in-flight transition traffic and is retired by the rekey state machine; arbitrary old epochs are rejected.
 
 ## Concurrency and lifecycle
 
