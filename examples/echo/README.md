@@ -26,4 +26,4 @@ go test -count=20 -timeout=120s ./examples/echo
 go test -race -count=1 ./examples/echo
 ```
 
-Tests cover round trip, malformed envelopes, cancellation, output failure, terminal-result races and exact-versus-composite close causes. Next: [provision independent peers](../echo-pair.md), then [the client lesson](../echo-client/README.md). Return to [the examples index](../README.md) for executable godoc lessons.
+Tests cover round trip, malformed envelopes, cancellation, terminal-result races and exact-versus-composite close causes. Next: [provision independent peers](../echo-pair.md), then [the client lesson](../echo-client/README.md). Return to [the examples index](../README.md) for executable godoc lessons.
