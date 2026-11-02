@@ -151,6 +151,92 @@ func TestServerHandshakeAndDataTransfer(t *testing.T) {
 	_ = clientSession.Close()
 }
 
+// Exercise the actual Noise authorization boundary, not just stored slice equality.
+func checkServerAllowlist(t *testing.T, server *Server, key StaticKey, want error) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	client, peer := net.Pipe()
+	defer client.Close()
+	defer peer.Close()
+	result := make(chan error, 1)
+	go func() {
+		session, _, err := server.performHandshake(ctx, NewTCPTransport(peer))
+		if session != nil {
+			_ = session.Close()
+		}
+		result <- err
+	}()
+	_, err := establishClient(ctx, NewTCPTransport(client), ClientConfig{
+		StaticKey: key, ServerStatic: server.config.StaticKey.Public(),
+	})
+	if err != nil {
+		t.Fatalf("client handshake: %v", err)
+	}
+	select {
+	case err := <-result:
+		if !errors.Is(err, want) {
+			t.Fatalf("server authorization = %v, want %v", err, want)
+		}
+	case <-ctx.Done():
+		t.Fatal("server handshake did not finish")
+	}
+}
+
+func TestServerAllowedClientsSnapshot(t *testing.T) {
+	for _, mutation := range []string{"outer replacement", "inner mutation"} {
+		t.Run(mutation, func(t *testing.T) {
+			allowedKey := generateTestStaticKey(t)
+			rejectedKey := generateTestStaticKey(t)
+			input := [][]byte{allowedKey.Public()}
+			server, err := NewServer(ServerConfig{StaticKey: generateTestStaticKey(t), AllowedClients: input})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer server.Close()
+			if mutation == "outer replacement" {
+				input[0] = rejectedKey.Public()
+			} else {
+				copy(input[0], rejectedKey.Public())
+			}
+			checkServerAllowlist(t, server, allowedKey, nil)
+			checkServerAllowlist(t, server, rejectedKey, ErrClientNotPermitted)
+		})
+	}
+}
+
+func TestServerAllowedClientsConcurrentReuse(t *testing.T) {
+	allowedKey := generateTestStaticKey(t)
+	rejectedKey := generateTestStaticKey(t)
+	input := [][]byte{allowedKey.Public()}
+	server, err := NewServer(ServerConfig{StaticKey: generateTestStaticKey(t), AllowedClients: input})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer server.Close()
+	// Start only after construction; all caller writes belong to this goroutine.
+	started, stop, done := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(done)
+		close(started)
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				input[0][0] ^= 1
+				input[0] = append([]byte(nil), input[0]...)
+			}
+		}
+	}()
+	defer func() { close(stop); <-done }()
+	<-started
+	for i := 0; i < 4; i++ {
+		checkServerAllowlist(t, server, allowedKey, nil)
+		checkServerAllowlist(t, server, rejectedKey, ErrClientNotPermitted)
+	}
+}
+
 func TestValidateHandshakeFrame(t *testing.T) {
 	valid, err := NewFrame(MessageTypeHandshakeInit, [16]byte{}, 0, make([]byte, HandshakeInitFixedSize), nil, nil)
 	if err != nil {

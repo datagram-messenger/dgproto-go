@@ -30,8 +30,11 @@ func (s *Session) Receive(frame Frame) (any, error) {
 }
 
 // ReceivePayload validates and authenticates a frame before committing any
-// receive state. Rekey validation, replay advancement, and the key transition
-// are committed together while receiveMu is held.
+// receive state. For nonzero sequences, duplicate/too-old errors come from the
+// authenticated epoch's replay window; if no applicable key authenticates the
+// frame, it returns ErrAuthentication instead. A previous-key RekeyInit returns
+// ErrInvalidEpoch even if its sequence was seen. Rekey validation, replay
+// advancement, and the key transition are committed together while receiveMu is held.
 func (s *Session) ReceivePayload(frame Frame) ([]byte, error) {
 	if frame.Header.MessageType == MessageTypeResumptionTicket {
 		return nil, fmt.Errorf("%w: 0x%02x is post-MVP", ErrMessageType, frame.Header.MessageType)
@@ -113,36 +116,42 @@ type receiveCandidate struct {
 }
 
 func (s *Session) decryptEpochLocked(frame Frame) (receiveCandidate, error) {
-	currentToken, currentCheck := s.replay.Check(frame.Header.Sequence)
-	if currentCheck == nil {
-		plaintext, err := s.receive.Decrypt(frame)
-		if err == nil {
-			return receiveCandidate{plaintext: plaintext, current: true, token: currentToken}, nil
-		}
-		if !errors.Is(err, ErrAuthentication) {
+	// Preserve the sequence-zero validation contract; replay classification of
+	// nonzero sequences belongs only to the epoch that authenticates the frame.
+	if frame.Header.Sequence == 0 {
+		return receiveCandidate{}, ErrReplayZero
+	}
+	plaintext, err := s.receive.Decrypt(frame)
+	if err == nil {
+		token, err := s.replay.Check(frame.Header.Sequence)
+		if err != nil {
 			return receiveCandidate{}, err
 		}
+		return receiveCandidate{plaintext: plaintext, current: true, token: token}, nil
+	}
+	if !errors.Is(err, ErrAuthentication) {
+		return receiveCandidate{}, err
 	}
 
 	previousAvailable := s.previousReceive != nil && s.graceRemaining > 0 &&
 		s.gracePeriod > 0 && s.now().Before(s.graceUntil)
 	if previousAvailable {
-		previousToken, previousCheck := s.previousReplay.Check(frame.Header.Sequence)
-		if previousCheck == nil || frame.Header.MessageType == MessageTypeRekeyInit {
-			plaintext, err := s.previousReceive.Decrypt(frame)
-			if err == nil {
-				return receiveCandidate{plaintext: plaintext, current: false, token: previousToken}, nil
+		plaintext, err := s.previousReceive.Decrypt(frame)
+		if err == nil {
+			// ReceivePayload rejects an authenticated previous-key RekeyInit
+			// as rollback, even if its sequence was already seen or is too old.
+			if frame.Header.MessageType == MessageTypeRekeyInit {
+				return receiveCandidate{plaintext: plaintext, current: false}, nil
 			}
-			if !errors.Is(err, ErrAuthentication) {
+			token, err := s.previousReplay.Check(frame.Header.Sequence)
+			if err != nil {
 				return receiveCandidate{}, err
 			}
+			return receiveCandidate{plaintext: plaintext, current: false, token: token}, nil
 		}
-		if currentCheck != nil && previousCheck != nil {
-			return receiveCandidate{}, currentCheck
+		if !errors.Is(err, ErrAuthentication) {
+			return receiveCandidate{}, err
 		}
-	}
-	if currentCheck != nil {
-		return receiveCandidate{}, currentCheck
 	}
 	return receiveCandidate{}, ErrAuthentication
 }

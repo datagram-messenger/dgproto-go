@@ -15,6 +15,9 @@ type ServerConfig struct {
 
 	// AllowedClients is an optional allowlist of 32-byte client static public keys.
 	// If empty, any client presenting a valid Noise handshake is permitted.
+	// NewServer snapshots the outer slice and every key's bytes. After successful
+	// construction the caller may reuse or mutate the input; the server retains
+	// an immutable policy. Do not mutate the input concurrently with NewServer.
 	AllowedClients [][]byte
 
 	// CipherSuite sets the symmetric encryption algorithm used after handshake.
@@ -137,6 +140,16 @@ func NewServer(config ServerConfig) (*Server, error) {
 	}
 	if config.MaxActiveConnections == 0 {
 		config.MaxActiveConnections = 1024
+	}
+	if config.AllowedClients != nil {
+		allowed := make([][]byte, len(config.AllowedClients))
+		for i, key := range config.AllowedClients {
+			if key != nil {
+				allowed[i] = make([]byte, len(key))
+				copy(allowed[i], key)
+			}
+		}
+		config.AllowedClients = allowed
 	}
 	return &Server{
 		config:         config,

@@ -27,12 +27,12 @@ Use it for desktop-client events, backend command channels, or custom binary pro
 - **Peer identity, not just encryption.** Noise XX authenticates static-key possession; the TCP client requires a provisioned server-key pin.
 - **Session protection.** ChaCha20-Poly1305 data frames, replay checks, and directional rekeying managed by the connection runtime.
 - **Explicit backpressure.** Bounded outbound and handler queues, plus separate server limits for handshakes and active connections.
-- **A lifecycle you control.** Contexts, explicit client `Start`, shutdown APIs, and a retained terminal cause.
-- **Structured binary messages.** Typed messages and TLV codecs, with application envelopes carrying stream IDs and message types.
+- **A lifecycle you control.** Stopped `DialContext` or opt-in `DialAndStartContext` with separate establishment/runtime contexts, shutdown APIs, and a retained terminal cause.
+- **Structured binary messages.** Typed messages and TLV codecs, with `NewEncryptedData` validating and copying application envelope fields for safe input reuse.
 
 > **Pre-1.0 / draft:** Wire compatibility is not yet stable. See [compatibility and upgrades](#compatibility-and-upgrades), including the **0.7.0 ErrorMessage wire break**.
 
-[Quick start](#quick-start) · [Fit and limits](#fit-and-limits) · [Contracts](#contracts-worth-knowing) · [Documentation](#documentation)
+[Quick start](#quick-start) · [Runnable lessons](examples/README.md) · [Independent peers](examples/echo-pair.md) · [Fit and limits](#fit-and-limits) · [Contracts](#contracts-worth-knowing) · [Documentation](#documentation)
 
 ## Install
 
@@ -51,12 +51,12 @@ Run a self-contained exchange on loopback — no separate service or pre-provisi
 ```sh
 git clone https://github.com/datagram-messenger/dgproto-go.git
 cd dgproto-go
-go test -run "^ExampleDialContext$" -count=1 -timeout=15s -v
+go run ./examples/echo
 ```
 
-Already have a checkout? Run just the `go test` command from its root. A successful run reports `ExampleDialContext` as passing; the test checks that both peers exchanged an application envelope.
+Already have a checkout? Run just the `go run` command from its root. Success prints `authenticated application echo received` only after validating the echoed application envelope and completing cleanup.
 
-The [complete executable example](client_example_test.go) creates loopback peers, allowlists the client key, pins the server key, calls `Start`, exchanges application envelopes, and closes both sides. It uses ephemeral in-memory identities and bounded waits — **a learning example, not production key management or an application server**.
+The [runnable echo command](examples/echo/main.go) creates loopback peers, allowlists the client key, pins the server key, explicitly calls `Start`, exchanges an immutable TLV payload, and closes/joins both sides. It uses ephemeral in-memory identities and bounded waits — **a learning example, not production key management or an application server**. See the [examples index](examples/README.md) for lifecycle details and tests. The existing [godoc exchange](client_example_test.go) is still runnable with `go test -run "^ExampleDialContext$" -count=1 -timeout=15s -v`.
 
 ### Integrate a pinned client
 
@@ -107,19 +107,33 @@ Continue with [server setup](docs/guides/getting-started.md#server), [admission 
 
 ## Contracts worth knowing
 
+### Send APIs
+
 | API | Success means |
 |-----|---------------|
 | `Send` / `TrySend` | Nonblocking queue acceptance; saturation returns `ErrOutboundQueueFull` |
 | `SendContext` | Queue acceptance after waiting for capacity, not network I/O |
 | `SendAndWait` | Complete **local** transport write, including any required rekey |
+| `SendPadded` / `SendPaddedContext` / `SendPaddedAndWait` | Same as above; padding is random authenticated cleartext, 0–255 bytes |
 
-The padded variants follow the same acceptance/write distinction. **None promises peer receipt, processing, acknowledgement, or durable delivery.** Define application acknowledgements, retries, and idempotency explicitly.
+**None promises peer receipt, processing, acknowledgement, or durable delivery.** Define application acknowledgements, retries, and idempotency explicitly.
+
+Messages and their reachable buffers are not snapshotted at enqueue. Keep them immutable while pending. A canceled write-wait does not retract an accepted message and does not permit immediate buffer reuse.
+
+### Connection ownership and errors
 
 - **Runtime ownership:** call `Start(runtimeCtx)` and always close a dialed connection, even if it never starts. The dial context bounds establishment only; canceling it after success does not stop the runtime.
-- **Shutdown:** `Connection.Close` attempts a close-frame write, not a queue drain or peer-acknowledged close. `Done` tracks runtime completion; `Err` retains the first terminal cause.
-- **Server shutdown:** `Close` waits for server-owned work. A positive `HandlerShutdownTimeout` detaches a stuck canceled handler; zero can wait indefinitely. `Abort` closes networking without waiting for callbacks, but cannot kill their goroutines. Bound handler and hook work yourself.
+- **Pre-canceled context:** passing an already-canceled context to `Start` stops the connection synchronously without starting any loops.
+- **Shutdown:** `Connection.Close` attempts a close-frame write (bounded by `WriteTimeout`, or 100 ms if zero), then shuts down. It is not a queue drain or peer-acknowledged close. `Done` closes after all loops exit; `Err` retains the first terminal cause.
+- **Error inspection:** `conn.Err()` may be nil before a cause is recorded; wait for `conn.Done()` when runtime completion is required. Use `errors.Is` for sentinel matching; the first recorded cause remains stable.
+- **Handler errors:** a non-nil handler return or panic terminates the connection; the runtime recovers panics into an error wrapping `ErrHandlerPanic`. The handler failure becomes the terminal cause only if no earlier cause was recorded.
 
-See [sending and ownership](docs/guides/getting-started.md#sending-and-ownership) and the [Go API reference](https://pkg.go.dev/github.com/datagram-messenger/dgproto-go) for the full contracts, including lower-level session/rekey APIs.
+### Server shutdown
+
+- `Close` stops networking and waits for server-owned work. A positive `HandlerShutdownTimeout` detaches a stuck canceled handler (does not kill it); zero can wait indefinitely.
+- `Abort` closes networking without waiting for callbacks and cannot kill goroutines. Bound handler and hook work yourself; coordinate service-level shutdown externally.
+
+See [sending and ownership](docs/guides/getting-started.md#sending-and-ownership), [error handling](docs/guides/getting-started.md#error-handling), and the [Go API reference](https://pkg.go.dev/github.com/datagram-messenger/dgproto-go) for the full contracts, including lower-level session/rekey APIs.
 
 ## Fit and limits
 
@@ -151,6 +165,7 @@ Optional traffic-secret logging requires both the `dgproto_keylog` build tag and
 
 | Start here | What you'll find |
 |------------|------------------|
+| [Runnable examples](examples/README.md) | Self-contained loopback echo, separate provisioned client/server commands, and tests |
 | [Getting started](docs/guides/getting-started.md) | Client/server integration, admission, ownership, shutdown, and timeouts |
 | [Go API reference](https://pkg.go.dev/github.com/datagram-messenger/dgproto-go) | Exported types, configuration, and method contracts |
 | [Architecture](docs/architecture/overview.md) | Framing, rekey flow, replay handling, and concurrency |

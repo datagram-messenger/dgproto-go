@@ -62,6 +62,10 @@ func (c *Connection) Err() error {
 func (c *Connection) closeGracefully(message SessionClose, cause error) error {
 	var result error
 	c.closeOnce.Do(func() {
+		// Local shutdown is already a terminal event. Publish it before the
+		// peer can react to SessionClose with EOF, without replacing an earlier
+		// runtime failure or canceling the context needed for the close write.
+		c.recordTerminal(cause)
 		c.closing.Store(true)
 		// Claim the unstarted runtime, or wait for concurrent Start to finish
 		// installing its loops. Only the owner of startOnce closes done.

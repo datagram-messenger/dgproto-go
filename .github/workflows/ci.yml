@@ -108,7 +108,7 @@ jobs:
           cache-dependency-path: go.sum
 
       - name: Test
-        run: go test -count=1 ./...
+        run: go test -v -count=1 ./...
 
   macos:
     name: Tests (macOS)

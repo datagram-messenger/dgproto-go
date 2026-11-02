@@ -112,14 +112,16 @@ variables, restore them on exit, and must not overlap other users in the same te
 process. Keep the control and TLV-message files together: `messageSentinel` is a
 shared local helper, not an exported testing API.
 
-`server_stats_test.go` owns public constructed-default/custom-limit and gated
-resource snapshot lifecycle/concurrent Serve/shutdown contracts, reusing the
-`lifecycleListener`, real Noise helper and bounded waits from the runtime suite.
-`server_admission_contract_test.go` also checks snapshot cleanup after admission
-rejection and admission/disconnect panic recovery. Root `server_stats.go` owns
-this secret-free advisory API; root `server_stats_test.go` checks coherent map
-handoff (including before Start), and `server_stats_example_test.go` retains the
-executable godoc example. Pending/active ownership and shutdown are sampled
+`server_stats_test.go` owns public constructed-default/custom-limit contracts.
+`server_stats_synctest_test.go` owns gated resource snapshot lifecycle/concurrent
+Serve/shutdown contracts, reusing the `lifecycleListener`, real Noise helper and
+bounded waits from the runtime suite. `server_admission_contract_synctest_test.go`
+checks snapshot cleanup after admission rejection and admission/disconnect panic
+recovery. Root `server_stats.go` owns this secret-free advisory API; root
+`server_stats_synctest_test.go` checks coherent map handoff (including before
+Start), and `server_stats_example_test.go` retains the executable godoc example.
+These three synctest files and root `server_runtime_synctest_test.go` require
+Go 1.26 via `//go:build go1.26`; the supported Go 1.25 minimum excludes them. Pending/active ownership and shutdown are sampled
 under one mutex; slot gauges are independently observed, not a globally atomic
 snapshot. A handshake slot is released before Admission, while a connection
 slot can remain occupied through OnDisconnect after active ownership ends.
@@ -129,7 +131,8 @@ Select with
 
 Root Server suites keep complete owners together: `server_handshake_test.go`
 (establishment/allowlist/frame validation), `server_runtime_test.go` (slots,
-reservation/atomic handoff snapshots and stress), `server_accept_test.go`
+atomic handoff snapshots and stress), `server_runtime_synctest_test.go`
+(deterministic worker reservation), `server_accept_test.go`
 (classification/scripted listeners/backoff), `server_shutdown_test.go`
 (Close/stalled handshake/admission socket). Config rejection stays in
 `server_config_test.go`; shared keys/config live in `server_test_helpers_test.go`.

@@ -1,0 +1,215 @@
+// Command echo runs one pinned, allowlisted application echo on loopback.
+// Its ephemeral identities are for learning, not production key management.
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"os"
+	"os/signal"
+	"time"
+
+	dgproto "github.com/datagram-messenger/dgproto-go"
+)
+
+const (
+	streamID         uint16 = 1
+	requestType      uint8  = 1
+	replyType        uint8  = 2
+	payloadField     uint8  = 1
+	demoPayload             = "hello DGProto"
+	successOutput           = "authenticated application echo received\n"
+	padLength        uint8  = 16
+	operationTimeout        = time.Second
+)
+
+func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+	if err := run(ctx, os.Stdout); err != nil {
+		// Do not print peer metadata, payloads, identities or key material.
+		fmt.Fprintln(os.Stderr, "echo failed")
+		os.Exit(1)
+	}
+}
+
+func run(ctx context.Context, out io.Writer) error {
+	if err := exchange(ctx); err != nil {
+		return err
+	}
+	_, err := io.WriteString(out, successOutput)
+	return err
+}
+
+func exchange(ctx context.Context) (err error) {
+	if err := ctx.Err(); err != nil {
+		return err // No keys, sockets or goroutines for an already canceled run.
+	}
+	serverKey, err := dgproto.GenerateStaticKey()
+	if err != nil {
+		return err
+	}
+	clientKey, err := dgproto.GenerateStaticKey()
+	if err != nil {
+		return err
+	}
+	runtimeCtx, cancelRuntime := context.WithTimeout(ctx, 5*time.Second)
+	defer cancelRuntime()
+
+	server, err := dgproto.NewServer(dgproto.ServerConfig{
+		StaticKey:               serverKey,
+		AllowedClients:          [][]byte{clientKey.Public()},
+		MaxConcurrentHandshakes: 1,
+		MaxActiveConnections:    1,
+		HandshakeTimeout:        2 * time.Second,
+		WriteTimeout:            operationTimeout,
+		HandlerShutdownTimeout:  operationTimeout,
+		Handler: func(ctx context.Context, c *dgproto.Connection, message any) error {
+			data, ok := message.(*dgproto.EncryptedData)
+			if !ok {
+				return nil // The runtime owns protocol control messages.
+			}
+			if err := validateEcho(data, requestType); err != nil {
+				return err
+			}
+			// Own the reply buffers; never mutate them, even if write-wait is canceled.
+			reply, err := dgproto.NewEncryptedData(streamID, replyType, data.Fields...)
+			if err != nil {
+				return err
+			}
+			if err := reply.ValidateFrameSize(padLength); err != nil {
+				return err
+			}
+			writeCtx, stop := context.WithTimeout(ctx, operationTimeout)
+			defer stop()
+			return c.SendPaddedAndWait(writeCtx, reply, padLength)
+		},
+	})
+	if err != nil {
+		return err
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return errors.Join(err, server.Close())
+	}
+	serveDone := make(chan error, 1)
+	go func() { serveDone <- server.Serve(listener) }()
+	defer func() {
+		// Call Close to join server-owned work. All demo callbacks are bounded.
+		err = errors.Join(err, server.Close())
+		// Also own the listener if shutdown raced Serve's registration.
+		if closeErr := listener.Close(); closeErr != nil && !errors.Is(closeErr, net.ErrClosed) {
+			err = errors.Join(err, closeErr)
+		}
+		joinCtx, stop := context.WithTimeout(context.Background(), 3*time.Second)
+		defer stop()
+		select {
+		case serveErr := <-serveDone:
+			if serveErr != nil && !errors.Is(serveErr, dgproto.ErrServerClosed) {
+				err = errors.Join(err, serveErr)
+			}
+		case <-joinCtx.Done():
+			err = errors.Join(err, joinCtx.Err())
+		}
+	}()
+
+	received := make(chan error, 1)
+	establishmentCtx, stopEstablishment := context.WithTimeout(runtimeCtx, 2*time.Second)
+	c, _, err := dgproto.DialContext(establishmentCtx, listener.Addr().String(), dgproto.ClientConfig{
+		StaticKey:    clientKey,
+		ServerStatic: serverKey.Public(), // Trusted directly from our local demo server, not TOFU.
+		ConnectionConfig: dgproto.ConnectionConfig{
+			HandshakeTimeout:       2 * time.Second,
+			WriteTimeout:           operationTimeout,
+			HandlerShutdownTimeout: operationTimeout,
+			Handler: func(ctx context.Context, _ *dgproto.Connection, message any) error {
+				data, ok := message.(*dgproto.EncryptedData)
+				if !ok {
+					return nil
+				}
+				validationErr := validateEcho(data, replyType)
+				select {
+				case received <- validationErr:
+					return validationErr
+				case <-ctx.Done():
+					return ctx.Err()
+				default:
+					return errors.New("duplicate demo echo")
+				}
+			},
+		},
+	})
+	stopEstablishment() // Independent of the returned connection's runtime.
+	if err != nil {
+		return err
+	}
+	defer func() {
+		// Always close, even before Start. A peer close may race this close-frame
+		// write after a validated reply; do not undo application receipt for EOF.
+		err = joinClientClose(err, c.Close())
+		joinCtx, stop := context.WithTimeout(context.Background(), 3*time.Second)
+		defer stop()
+		select {
+		case <-c.Done():
+		case <-joinCtx.Done():
+			err = errors.Join(err, joinCtx.Err())
+		}
+	}()
+	c.Start(runtimeCtx) // DialContext returns a stopped, caller-owned Connection.
+
+	request, err := dgproto.NewEncryptedData(streamID, requestType, dgproto.TLV{Type: payloadField, Value: []byte(demoPayload)})
+	if err != nil {
+		return err
+	}
+	if err := request.ValidateFrameSize(padLength); err != nil {
+		return err
+	}
+	writeCtx, stopWrite := context.WithTimeout(runtimeCtx, operationTimeout)
+	err = c.SendPaddedAndWait(writeCtx, request, padLength)
+	stopWrite()
+	// The request and its TLV buffers stay immutable through shutdown, including
+	// cancellation after enqueue. Local write completion is not peer receipt.
+	if err != nil {
+		return err
+	}
+	return waitEcho(runtimeCtx, received, c.Done(), c.Err)
+}
+
+func waitEcho(ctx context.Context, received <-chan error, done <-chan struct{}, terminal func() error) error {
+	select {
+	case err := <-received:
+		return err // Only a callback-published application result is success.
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-done:
+		// Prefer an already published result, not work dropped by shutdown.
+		select {
+		case err := <-received:
+			return err
+		default:
+		}
+		if err := terminal(); err != nil {
+			return err
+		}
+		return dgproto.ErrConnectionClosed
+	}
+}
+
+func joinClientClose(operationErr, closeErr error) error {
+	if operationErr == nil && (closeErr == io.EOF || closeErr == net.ErrClosed ||
+		closeErr == dgproto.ErrConnectionClosed) {
+		return nil // Only after a validated reply; never hide an operation failure.
+	}
+	return errors.Join(operationErr, closeErr)
+}
+
+func validateEcho(data *dgproto.EncryptedData, messageType uint8) error {
+	if data == nil || data.StreamID != streamID || data.AppMessageType != messageType ||
+		len(data.Fields) != 1 || data.Fields[0].Type != payloadField || string(data.Fields[0].Value) != demoPayload {
+		return errors.New("invalid demo application envelope")
+	}
+	return nil
+}

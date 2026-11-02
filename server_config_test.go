@@ -208,6 +208,21 @@ func TestNewServerPreservesExplicitConfiguration(t *testing.T) {
 	}
 }
 
+func TestNewServerAllowedClientsShapes(t *testing.T) {
+	for _, input := range [][][]byte{nil, {}, {nil, {}, {1}, make([]byte, 32)}} {
+		config := validServerConfig(t)
+		config.AllowedClients = input
+		server, err := NewServer(config)
+		if err != nil {
+			t.Fatalf("allowlist shape rejected: %v", err)
+		}
+		if !reflect.DeepEqual(server.config.AllowedClients, input) {
+			t.Fatal("constructor changed nil, empty, or invalid-length key shape")
+		}
+		_ = server.Close()
+	}
+}
+
 func TestNewServerConfigurationErrorPriority(t *testing.T) {
 	config := validServerConfig(t)
 	config.MaxConcurrentHandshakes = -1
