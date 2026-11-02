@@ -70,7 +70,7 @@ selectors, helper ownership and non-parallel sentinel requirements.
 | Accept retry classification | Stdlib-only `internal/acceptpolicy/` |
 | Optional process-wide traffic-secret sink | Tagged stdlib-only `internal/keylog/`; root owns session commit decisions and default no-ops |
 | Handshake, Session, Connection and Server state/lifecycle | Root responsibility-oriented files; white-box tests remain root |
-| Advisory server resource snapshots | Root `server_stats.go`; public limits/lifecycle/concurrent shutdown in `integrationtests/server_stats_test.go`, rejection/panic cleanup in `integrationtests/server_admission_contract_test.go`, coherent handoff in root `server_stats_test.go`, godoc in `server_stats_example_test.go` |
+| Advisory server resource snapshots | Root `server_stats.go`; public constructed limits in `integrationtests/server_stats_test.go`, lifecycle/concurrent shutdown in `integrationtests/server_stats_synctest_test.go`, rejection/panic cleanup in `integrationtests/server_admission_contract_synctest_test.go`, coherent handoff in root `server_stats_synctest_test.go`, godoc in `server_stats_example_test.go`. These three synctest files and root worker-reservation owner `server_runtime_synctest_test.go` require Go 1.26 via `//go:build go1.26`; the supported Go 1.25 minimum excludes them. |
 | Public TCP framing/stream/cancellation | `integrationtests/tcp_test.go`, `integrationtests/tcp_stream_test.go`, `integrationtests/tcp_cancellation_test.go`; shared public helpers in `integrationtests/tcp_helpers_test.go` |
 | Godoc, vectors, conformance, fuzz and keylog build variants | Existing root examples/tests and unchanged `testdata/` |
 

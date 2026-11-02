@@ -189,7 +189,7 @@ there).
 | Pad Length       | 36     | 1            | `uint8`   | Length of trailing random padding, 0–255 bytes. |
 | Reserved         | 37     | 3            | —         | MUST be zero on send and preserved on receive as part of the exact AEAD associated data. |
 | Payload          | 40     | variable     | `bytes`   | AEAD ciphertext of the L4 message, or a Noise handshake message for Msg Type `0x01`/`0x02`. |
-| AEAD Tag         | 40+PL  | 0 or 16      | `bytes16` | Absent on handshake frames (`0x01` and `0x02`); otherwise the 128-bit Poly1305 or GCM authentication tag. Noise provides handshake-message authentication internally. |
+| AEAD Tag         | 40+PL  | 0 or 16      | `bytes16` | Absent on handshake frames (`0x01` and `0x02`); otherwise the 128-bit Poly1305 authentication tag from ChaCha20-Poly1305 (the MVP data cipher paired with Noise ChaChaPoly). Noise provides handshake-message authentication internally. |
 | Padding          | ...    | Pad Length   | `bytes`   | Cryptographically random cleartext bytes. For encrypted frames every padding octet MUST be appended to the 40-byte header when forming AEAD associated data, so the tag authenticates the padding without encrypting it. |
 
 Handshake frames use a zero Session ID and Sequence Number because those
@@ -387,7 +387,7 @@ Validation algorithm for an incoming frame with Sequence Number `n`:
 | ID    | Name               | Direction      | Encrypted? |
 |-------|--------------------|----------------|------------|
 | 0x01  | HandshakeInit       | Client → Server| No (Noise handles its own confidentiality per pattern) |
-| 0x02  | HandshakeResponse   | Server → Client| No (as above) |
+| 0x02  | HandshakeResponse   | Server → Client (flight 2); Client → Server (flight 3) | No (as above) |
 | 0x03  | EncryptedData        | Bidirectional  | Yes |
 | 0x04  | Ping / Pong          | Bidirectional  | Yes |
 | 0x05  | SessionClose         | Bidirectional  | Yes |
