@@ -3,6 +3,7 @@
 | Document | Status | Purpose |
 | --- | --- | --- |
 | [DGProto v1](protocol/dgproto-v1.md) | **Normative** | Wire format and protocol requirements |
+| [DGProto 2](protocol/dgproto-v2.md) ([PDF](protocol/dgproto-v2.pdf)) | Draft, not implemented by this library | End-to-end encrypted messaging between endpoints and a relay; the PDF is rendered from the Markdown source |
 | [Architecture](architecture/overview.md) | Current, non-normative | Go implementation and concurrency model |
 | [Package layout](architecture/package-layout.md) | Current, non-normative | Implemented boundaries, test ownership and authoritative refactor checkpoint |
 | [Package layout history](architecture/package-layout-history.md) | **Archived** | Earlier refactor observations and superseded proposals, not current guidance |
